@@ -40,10 +40,9 @@ type ServerCreditService = {
 	name: string;
 	selectionType: 'duration' | 'quantity' | 'request';
 	options?: string[];
-	products?: { id: string; name: string; description: string; price: number; icon: string; deliveryTime: string; summary: string; fullDescription: string; highlighted?: boolean }[];
+	products?: { id: string; name: string; description: string; price: number; icon: string; image: string; deliveryTime: string; summary: string; fullDescription: string; highlighted?: boolean }[];
 	targetLabel: string;
 	requiresToolEmail?: boolean;
-	requiresToolUsername?: boolean;
 };
 
 const serverCreditServices: ServerCreditService[] = [
@@ -59,13 +58,12 @@ const serverCreditServices: ServerCreditService[] = [
 		name: 'Unlock Tool',
 		selectionType: 'duration',
 		products: [
-			{ id: 'unlock-3-months', name: '3 Months Activation (90 Days)', description: 'UnlockTool Activation – Official Reseller', price: 18, icon: 'UT', deliveryTime: '5–15 minutes', summary: '90-day UnlockTool account activation for supported GSM servicing operations.', fullDescription: 'Activate your UnlockTool account for 90 days. Check current device support before ordering.' },
-			{ id: 'unlock-6-months', name: '6 Months Activation (180 Days)', description: 'UnlockTool Activation – Official Reseller', price: 27, icon: 'UT', deliveryTime: '5–15 minutes', summary: '180-day UnlockTool account activation for supported GSM servicing operations.', fullDescription: 'Activate your UnlockTool account for 180 days. Check current device support before ordering.' },
-			{ id: 'unlock-12-months', name: '12 Months Activation (360 Days)', description: 'UnlockTool Activation – Official Reseller', price: 45, icon: 'UT', deliveryTime: '5–15 minutes', summary: '360-day UnlockTool account activation for supported GSM servicing operations.', fullDescription: 'Activate your UnlockTool account for 360 days. Check current device support before ordering.', highlighted: true },
-			{ id: 'unlock-rent-6-hours', name: 'Rent [6 Hours] – Instant Auto API', description: 'All GSM Tools Rent Service – Instant Auto API', price: 1.2, icon: 'RENT', deliveryTime: 'Instant', summary: 'UnlockTool six-hour rental with instant auto-API processing.', fullDescription: 'Temporary six-hour UnlockTool access for supported servicing operations.' },
+			{ id: 'unlock-3-months', name: '3 Months Activation (90 Days)', description: 'UnlockTool Activation – Official Reseller', price: 18, icon: 'UT', image: 'https://images.unsplash.com/photo-1616469829941-c7200edec809?w=600&auto=format&fit=crop&q=80', deliveryTime: '5–15 Minutes', summary: 'UnlockTool 3 Months / 90 Days account activation for supported GSM servicing operations. Check current device support before ordering.', fullDescription: 'Activate your UnlockTool account with the 3 Months Activation (90 Days) license for supported mobile servicing work.' },
+			{ id: 'unlock-6-months', name: '6 Months Activation (180 Days)', description: 'UnlockTool Activation – Official Reseller', price: 27, icon: 'UT', image: 'https://images.unsplash.com/photo-1616469829941-c7200edec809?w=600&auto=format&fit=crop&q=80', deliveryTime: '5–15 Minutes', summary: 'UnlockTool 6 Months / 180 Days account activation for supported GSM servicing operations. Check current device support before ordering.', fullDescription: 'Activate your UnlockTool account with the 6 Months Activation (180 Days) license for supported mobile servicing work.' },
+			{ id: 'unlock-12-months', name: '12 Months Activation (360 Days)', description: 'UnlockTool Activation – Official Reseller', price: 45, icon: 'UT', image: 'https://images.unsplash.com/photo-1616469829941-c7200edec809?w=600&auto=format&fit=crop&q=80', deliveryTime: '5–15 Minutes', summary: 'UnlockTool 12 Months / 360 Days account activation for supported GSM servicing operations. Check current device support before ordering.', fullDescription: 'Activate your UnlockTool account with the 12 Months Activation (360 Days) license for supported mobile servicing work.', highlighted: true },
+			{ id: 'unlock-rent-6-hours', name: 'Rent [6 Hours] – Instant Auto API', description: 'All GSM Tools Rent Service – Instant Auto API', price: 1.2, icon: 'RENT', image: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=600&auto=format&fit=crop&q=80', deliveryTime: 'Instant', summary: 'UnlockTool 6 Hours rent service with instant auto API distribution.', fullDescription: 'Temporary six-hour access to UnlockTool for quick servicing jobs.' },
 		],
 		targetLabel: 'Tool account email',
-		requiresToolUsername: true,
 	},
 	{ id: 'samkey', name: 'Samkey Server Credits', selectionType: 'quantity', targetLabel: 'Device serial / username / account email' },
 	{ id: 'samtmo', name: 'SamTMO', selectionType: 'quantity', targetLabel: 'Device serial / username / account email' },
@@ -341,7 +339,6 @@ export default function App() {
 	const [creditSelections, setCreditSelections] = useState<Record<string, string>>({});
 	const [creditQuantities, setCreditQuantities] = useState<Record<string, string>>({});
 	const [creditTargets, setCreditTargets] = useState<Record<string, string>>({});
-	const [creditUsernames, setCreditUsernames] = useState<Record<string, string>>({});
 
 	const refreshWalletBalance = useCallback(async (userId: string) => {
 		if (!supabase) return;
@@ -520,11 +517,9 @@ export default function App() {
 			: service.selectionType === 'request' ? 'Service request' : selection);
 		if (!description) return;
 		if (service.requiresToolEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(creditTargets[service.id]?.trim() ?? '')) return;
-		if (service.requiresToolUsername && !creditUsernames[service.id]?.trim()) return;
 
 		const targetDetails = [
 			creditTargets[service.id]?.trim() ? `Email: ${creditTargets[service.id].trim()}` : '',
-			creditUsernames[service.id]?.trim() ? `Username: ${creditUsernames[service.id].trim()}` : '',
 		].filter(Boolean).join(' | ');
 
 		setCart((current) => [...current, {
@@ -861,7 +856,6 @@ export default function App() {
 										const quantity = creditQuantities[service.id] ?? '1';
 										const quantityValue = Number(quantity);
 										const toolEmail = creditTargets[service.id]?.trim() ?? '';
-										const toolUsername = creditUsernames[service.id]?.trim() ?? '';
 										const selectedProduct = service.products?.find((product) => product.id === selectedDuration);
 										const validToolEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toolEmail);
 										const canAddSelection = service.selectionType === 'duration'
@@ -870,8 +864,7 @@ export default function App() {
 												? Number.isInteger(quantityValue) && quantityValue > 0
 												: true;
 										const canAdd = canAddSelection
-											&& (!service.requiresToolEmail || validToolEmail)
-											&& (!service.requiresToolUsername || toolUsername.length > 0);
+											&& (!service.requiresToolEmail || validToolEmail);
 
 										return (
 											<article className="rounded-xl border border-[#243f70] bg-[#091835] p-4" key={service.id}>
@@ -883,27 +876,91 @@ export default function App() {
 												</div>
 												<div className="grid grid-cols-1 gap-3">
 													{service.products ? (
-														<div className="grid gap-3 sm:grid-cols-2">
-															{service.products.map((product) => {
-																const selected = selectedDuration === product.id;
-																return (
+														selectedProduct ? (
+															<div className="overflow-hidden rounded-xl border border-[#294572] bg-[#07142e]">
+																<button
+																	className="flex items-center gap-2 border-b border-[#294572] px-4 py-3 text-sm font-semibold text-slate-300 transition hover:text-white"
+																	type="button"
+																	onClick={() => setCreditSelections((current) => ({ ...current, [service.id]: '' }))}
+																>
+																	<span aria-hidden="true">←</span> Back to Products
+																</button>
+																<div className="relative overflow-hidden bg-black">
+																	<img src={selectedProduct.image} alt={selectedProduct.name} className="mx-auto max-h-80 w-full object-cover" loading="lazy" />
+																</div>
+																<div className="grid gap-4 p-4">
+																	<div className="flex items-start justify-between gap-3">
+																		<div>
+																			<h4 className="text-xl font-semibold leading-tight text-white">{selectedProduct.name}</h4>
+																			<p className="mt-2 text-sm text-slate-400">{selectedProduct.description}</p>
+																		</div>
+																	</div>
+																	<div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold">
+																		<span className="rounded bg-orange-500 px-2.5 py-1 text-white">Server Service</span>
+																		<span className="rounded border border-[#294572] px-2.5 py-1 text-slate-300">Digital</span>
+																		<span className="rounded border border-emerald-500/70 px-2.5 py-1 text-emerald-300">In Stock</span>
+																	</div>
+																	<div className="flex items-center gap-2 text-xs text-slate-400">
+																		<svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.7">
+																			<path strokeLinecap="round" strokeLinejoin="round" d="M3 7h11v10H3zM14 10h4l3 3v4h-7zM7 20a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm11 0a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" />
+																		</svg>
+																		<span>Delivery Time: {selectedProduct.deliveryTime}</span>
+																	</div>
+																	<p className="text-3xl font-bold text-white">{formatPrice(selectedProduct.price)} USD</p>
+																	<p className="text-sm leading-relaxed text-slate-300">{selectedProduct.summary}</p>
+																	<div className="flex items-center gap-3 pt-2">
+																		<button
+																			className="grid h-12 w-12 shrink-0 place-items-center rounded-md border border-sky-500 text-sky-300 transition hover:bg-sky-500/10"
+																			type="button"
+																			aria-label={`Add ${selectedProduct.name} to cart`}
+																			onClick={() => addServerCredit(service)}
+																		>
+																			<svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.7">
+																				<path strokeLinecap="round" strokeLinejoin="round" d="M3 4h2l2.2 11h10.9l2-8H6M9 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2Zm8 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" />
+																			</svg>
+																		</button>
+																		<button
+																			className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-md bg-sky-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-500"
+																			type="button"
+																			onClick={() => {
+																				addServerCredit(service);
+																				document.getElementById('summary-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+																			}}
+																		>
+																			<svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.7">
+																				<path strokeLinecap="round" strokeLinejoin="round" d="M3 4h2l2.2 11h10.9l2-8H6M9 20a1 1 0 1 0 0-2 2 2 0 0 0 0 2Zm8 0a1 1 0 1 0 0-2 2 2 0 0 0 0 2Z" />
+																			</svg>
+																			Buy Now
+																		</button>
+																	</div>
+																	<div className="mt-2 flex flex-col gap-3 border-t border-[#294572] pt-5">
+																		<h5 className="text-lg font-bold text-sky-300">Description</h5>
+																		<h6 className="text-xl font-bold text-white">{selectedProduct.name}</h6>
+																		<p className="text-sm leading-relaxed text-slate-300">{selectedProduct.fullDescription}</p>
+																	</div>
+																</div>
+															</div>
+														) : (
+															<div className="grid gap-3">
+																<h4 className="text-lg font-bold text-slate-100">UnlockTool Services</h4>
+																{service.products.map((product) => (
 																	<button
-																		className={`flex min-h-24 items-center gap-3 rounded-xl border p-3 text-left transition ${selected ? 'border-sky-400 bg-sky-400/15 ring-1 ring-sky-400' : product.highlighted ? 'border-slate-400 bg-slate-200/10 hover:border-sky-400' : 'border-[#294572] bg-[#07142e] hover:border-sky-400'}`}
+																		className={`flex min-h-24 items-center gap-4 rounded-xl border p-3 text-left transition hover:border-sky-400 hover:bg-white/5 ${product.highlighted ? 'border-slate-400 bg-slate-200/10' : 'border-[#294572] bg-[#07142e]'}`}
 																		type="button"
 																		key={product.id}
-																		aria-pressed={selected}
 																		onClick={() => setCreditSelections((current) => ({ ...current, [service.id]: product.id }))}
 																	>
-																		<span className="grid h-14 w-14 shrink-0 place-items-center rounded-lg border border-[#294572] bg-[#0a1d3a] text-[10px] font-bold tracking-wide text-sky-300" aria-hidden="true">{product.icon}</span>
+																		<img src={product.image} alt="" className="h-16 w-16 shrink-0 rounded-lg object-cover" loading="lazy" />
 																		<span className="min-w-0 flex-1">
-																			<span className="block text-sm font-semibold text-white">{product.name}</span>
-																			<span className="mt-1 block text-xs text-slate-400">{product.description}</span>
+																			<span className="block truncate text-sm font-bold text-white">{product.name}</span>
+																			<span className="my-0.5 block truncate text-xs text-slate-400">{product.description}</span>
+																			<strong className="block text-base text-sky-300">{formatPrice(product.price)} USD</strong>
 																		</span>
-																		<strong className="shrink-0 text-sm text-sky-300">{formatPrice(product.price)} USD</strong>
+																		<span aria-hidden="true" className="text-xl text-slate-400">›</span>
 																	</button>
-																);
-															})}
-														</div>
+																))}
+															</div>
+														)
 													) : service.selectionType === 'duration' ? (
 														<label className="grid gap-1.5 text-xs font-medium text-slate-300">
 															Duration / license type
@@ -934,47 +991,6 @@ export default function App() {
 															Add an EFT Tool license request. The team will confirm the available license and price.
 														</p>
 													)}
-													{selectedProduct && (
-														<div className="overflow-hidden rounded-xl border border-[#294572] bg-[#07142e]">
-															<div className="grid min-h-32 place-items-center bg-gradient-to-br from-[#0c2850] to-[#09152d] p-6">
-																<span className="grid h-16 w-16 place-items-center rounded-2xl border border-sky-400/40 bg-sky-400/10 text-sm font-black tracking-widest text-sky-200" aria-hidden="true">{selectedProduct.icon}</span>
-															</div>
-															<div className="grid gap-4 p-4">
-																<div className="flex items-start justify-between gap-3">
-																	<div>
-																		<h4 className="text-lg font-semibold text-white">{selectedProduct.name}</h4>
-																		<p className="mt-1 text-xs text-slate-400">{selectedProduct.description}</p>
-																	</div>
-																	<strong className="shrink-0 text-xl text-sky-300">{formatPrice(selectedProduct.price)} USD</strong>
-																</div>
-																<div className="flex flex-wrap gap-2 text-[11px] font-semibold">
-																	<span className="rounded bg-orange-500 px-2.5 py-1 text-white">Server Service</span>
-																	<span className="rounded border border-[#294572] px-2.5 py-1 text-slate-300">Digital</span>
-																	<span className="rounded border border-emerald-500/70 px-2.5 py-1 text-emerald-300">In Stock</span>
-																</div>
-																<p className="text-xs text-slate-400">Delivery time: {selectedProduct.deliveryTime}</p>
-																<p className="text-sm leading-6 text-slate-300">{selectedProduct.summary}</p>
-																<div className="border-t border-[#294572] pt-3">
-																	<h5 className="font-semibold text-slate-100">Description</h5>
-																	<p className="mt-1 text-sm leading-6 text-slate-400">{selectedProduct.fullDescription}</p>
-																</div>
-																<div className="grid gap-3">
-																	<label className="grid gap-1.5 text-xs font-medium text-slate-300">
-																		UnlockTool username <span className="text-red-300">Required</span>
-																		<input
-																			className="h-10 rounded-lg border border-[#294572] bg-[#091835] px-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-sky-400"
-																			type="text"
-																			autoComplete="username"
-																			placeholder="Username registered to UnlockTool"
-																			required
-																			value={creditUsernames[service.id] ?? ''}
-																			onChange={(event) => setCreditUsernames((current) => ({ ...current, [service.id]: event.target.value }))}
-																		/>
-																	</label>
-																</div>
-															</div>
-														</div>
-													)}
 													{!service.products && (
 														<label className="grid gap-1.5 text-xs font-medium text-slate-300">
 															{service.targetLabel}{service.requiresToolEmail && <span className="text-red-300">Required</span>}
@@ -990,7 +1006,7 @@ export default function App() {
 														</label>
 													)}
 												</div>
-												<div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+												{!service.products && <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
 													<p className={`text-sm font-semibold ${service.products ? 'text-sky-300' : 'text-amber-200'}`}>
 														{service.products ? (selectedProduct ? `${formatPrice(selectedProduct.price)} USD selected` : 'Select an offer to see details') : 'Contact for price/payment'}
 													</p>
@@ -1002,7 +1018,7 @@ export default function App() {
 													>
 														Add to cart
 													</button>
-												</div>
+												</div>}
 											</article>
 										);
 									})}
