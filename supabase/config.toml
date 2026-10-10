@@ -1,0 +1,7 @@
+[functions.create-paypal-order]
+verify_jwt = true
+
+[functions.capture-paypal-topup]
+verify_jwt = true
+[functions.confirm-manual-topup]
+verify_jwt = false
