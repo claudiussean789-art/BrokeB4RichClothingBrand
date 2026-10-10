@@ -447,9 +447,11 @@ export default function App() {
 								</div>
 							)}
 							{(hasDevices || hasRepairs) && (
-								<div className="flex items-center justify-between border-t border-blue-300/15 py-4">
-									<span className="text-sm text-slate-300">Order total</span>
-									<strong className="text-lg">{formatPrice(orderTotal)} <small className="text-xs font-normal text-slate-500">USD</small></strong>
+								<div className="my-2 flex items-center justify-between gap-3 rounded-xl border border-sky-500/40 bg-sky-500/10 px-4 py-4" aria-live="polite">
+									<span className="text-sm font-semibold text-slate-100">
+										Checkout total <small className="mt-1 block text-xs font-normal text-slate-400">{cart.length} {cart.length === 1 ? 'item' : 'items'}</small>
+									</span>
+									<strong className="text-xl text-sky-300">{formatPrice(orderTotal)} <small className="text-xs font-normal text-slate-400">USD</small></strong>
 								</div>
 							)}
 
@@ -534,12 +536,18 @@ export default function App() {
 							)}
 
 							{cart.length > 0 && (
-								<fieldset className="grid gap-2 border-0 p-0">
-									<legend className="mb-2 text-xs font-semibold text-slate-300">Select payment method</legend>
-									<label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-[#294572] bg-[#07142e] px-3 text-sm text-slate-200 has-[:checked]:border-sky-700">
-										<input className="accent-sky-400" type="radio" name="paymentMethod" value="local" checked={paymentMethod === 'local'} onChange={() => setPaymentMethod('local')} />
-										Local transfer
-									</label>
+								<div className="grid gap-2">
+									<label className="text-xs font-semibold text-slate-300" htmlFor="paymentMethod">Select payment method</label>
+									<select
+										className="h-11 rounded-lg border border-[#294572] bg-[#07142e] px-3 text-sm text-white outline-none focus:border-sky-400"
+										id="paymentMethod"
+										name="paymentMethod"
+										value={paymentMethod}
+										onChange={(event) => setPaymentMethod(event.target.value === 'payoneer' ? 'payoneer' : 'local')}
+									>
+										<option value="local">Local transfer</option>
+										<option value="payoneer">Payoneer payment link</option>
+									</select>
 									{paymentMethod === 'local' && (
 										<div className="flex gap-2" aria-label="Choose local transfer method">
 											{(['lynk', 'ncb', 'scotiabank'] as const).map((rail) => (
@@ -555,11 +563,7 @@ export default function App() {
 											))}
 										</div>
 									)}
-									<label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-[#294572] bg-[#07142e] px-3 text-sm text-slate-200 has-[:checked]:border-sky-700">
-										<input className="accent-sky-400" type="radio" name="paymentMethod" value="payoneer" checked={paymentMethod === 'payoneer'} onChange={() => setPaymentMethod('payoneer')} />
-										Payoneer payment link
-									</label>
-								</fieldset>
+								</div>
 							)}
 
 							<button
