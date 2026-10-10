@@ -43,10 +43,11 @@ const deviceBrands: DeviceBrand[] = [
 		devices: [
 			{ id: 'ipad-pro-13', name: 'iPad Pro 13-inch', price: 100 },
 			{ id: 'ipad-pro-11', name: 'iPad Pro 11-inch', price: 100 },
+			{ id: 'ipad-air-3', name: 'iPad Air (3rd Gen)', price: 38 },
 			{ id: 'ipad-air-13', name: 'iPad Air 13-inch', price: 100 },
 			{ id: 'ipad-air-11', name: 'iPad Air 11-inch', price: 100 },
 			{ id: 'ipad-standard', name: 'iPad', price: 100 },
-			{ id: 'ipad-mini', name: 'iPad mini', price: 100 },
+			{ id: 'ipad-mini-5', name: 'iPad mini 5', price: 30 },
 		],
 	},
 	{
