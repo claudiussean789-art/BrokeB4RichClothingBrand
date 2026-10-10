@@ -40,6 +40,7 @@ type ServerCreditService = {
 	name: string;
 	selectionType: 'duration' | 'quantity';
 	options?: string[];
+	products?: { id: string; name: string; description: string; price: number; icon: string; highlighted?: boolean }[];
 	targetLabel: string;
 	requiresToolEmail?: boolean;
 };
@@ -57,7 +58,12 @@ const serverCreditServices: ServerCreditService[] = [
 		id: 'unlock-tool',
 		name: 'Unlock Tool',
 		selectionType: 'duration',
-		options: ['1 Month', '3 Months', '6 Months', '1 Year'],
+		products: [
+			{ id: 'unlock-3-months', name: '3 Months Activation (90 Days)', description: 'UnlockTool Activation – Official Reseller', price: 18, icon: 'UT' },
+			{ id: 'unlock-6-months', name: '6 Months Activation (180 Days)', description: 'UnlockTool Activation – Official Reseller', price: 27, icon: 'UT' },
+			{ id: 'unlock-12-months', name: '12 Months Activation (360 Days)', description: 'UnlockTool Activation – Official Reseller', price: 45, icon: 'UT', highlighted: true },
+			{ id: 'unlock-rent-6-hours', name: 'Rent [6 Hours] – Instant Auto API', description: 'All GSM Tools Rent Service – Instant Auto API', price: 1.2, icon: 'RENT' },
+		],
 		targetLabel: 'Tool account email',
 		requiresToolEmail: true,
 	},
@@ -437,11 +443,13 @@ export default function App() {
 	const hasRepairs = cart.some((item) => item.kind === 'repairs');
 	const hasDevices = cart.some((item) => item.kind === 'devices');
 	const hasCredits = cart.some((item) => item.kind === 'credits');
+	const hasUnpricedCredits = cart.some((item) => item.kind === 'credits' && item.price === null);
 	const hasUnpricedDevices = cart.some((item) => item.kind === 'devices' && item.price === null);
 	const unpricedDeviceCount = cart.filter((item) => item.kind === 'devices' && item.price === null).length;
 	const deviceTotal = cart.reduce((sum, item) => sum + (item.kind === 'devices' ? item.price ?? 0 : 0), 0);
 	const repairTotal = cart.reduce((sum, item) => sum + (item.kind === 'repairs' ? item.price ?? 0 : 0), 0);
-	const orderTotal = deviceTotal + repairTotal;
+	const creditTotal = cart.reduce((sum, item) => sum + (item.kind === 'credits' ? item.price ?? 0 : 0), 0);
+	const orderTotal = deviceTotal + repairTotal + creditTotal;
 
 	const addDevice = (brand: string, device: Device) =>
 		setCart((current) => [...current, {
@@ -504,17 +512,19 @@ export default function App() {
 	);
 
 	const addServerCredit = (service: ServerCreditService) => {
-		const selection = service.selectionType === 'duration'
-			? creditSelections[service.id]
-			: `${creditQuantities[service.id] || '1'} credit${creditQuantities[service.id] === '1' ? '' : 's'}`;
-		if (!selection) return;
+		const selection = creditSelections[service.id] ?? '';
+		const product = service.products?.find((item) => item.id === selection);
+		const description = product?.name ?? (service.selectionType === 'quantity'
+			? `${creditQuantities[service.id] || '1'} credit${creditQuantities[service.id] === '1' ? '' : 's'}`
+			: selection);
+		if (!description) return;
 		if (service.requiresToolEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(creditTargets[service.id]?.trim() ?? '')) return;
 
 		setCart((current) => [...current, {
-			id: `${service.id}-${Date.now()}-${current.length}`,
-			name: `${service.name} — ${selection}`,
+			id: `${product?.id ?? service.id}-${Date.now()}-${current.length}`,
+			name: `${service.name} — ${description}`,
 			kind: 'credits',
-			price: null,
+			price: product?.price ?? null,
 			identifier: creditTargets[service.id]?.trim() || undefined,
 		}]);
 	};
@@ -618,14 +628,14 @@ export default function App() {
 			messageLines.push(
 				'',
 				'Server Credits for Box/Dongle:',
-				...credits.map((item) => `- ${item.name}${item.identifier ? ` — Target: ${item.identifier}` : ''} (contact for price/payment)`),
+				...credits.map((item) => `- ${item.name} (${item.price === null ? 'price to be confirmed' : `${formatPrice(item.price)} USD`})${item.identifier ? ` — Tool / account email: ${item.identifier}` : ''}`),
 			);
-			messageLines.push('Server credit pricing and payment will be confirmed by the team.');
+			if (hasUnpricedCredits) messageLines.push('Pricing and payment for unpriced server credit services will be confirmed by the team.');
 		}
-		messageLines.push('', `Device total: ${formatPrice(deviceTotal)} USD`, `Repair services total: ${formatPrice(repairTotal)} USD`);
+		messageLines.push('', `Device total: ${formatPrice(deviceTotal)} USD`, `Repair services total: ${formatPrice(repairTotal)} USD`, `Priced server credits total: ${formatPrice(creditTotal)} USD`);
 		if (hasUnpricedDevices) messageLines.push('Note: device total excludes devices whose price is to be confirmed.');
 		messageLines.push(
-			`Total amount: ${formatPrice(orderTotal)} USD${hasCredits ? ' (server credits excluded until confirmed)' : ''}`,
+			`Total amount: ${formatPrice(orderTotal)} USD${hasUnpricedCredits ? ' (unpriced server credits excluded until confirmed)' : ''}`,
 			`Payment method: ${payment}`,
 		);
 
@@ -858,8 +868,30 @@ export default function App() {
 													</span>
 													<h3 className="font-semibold text-slate-100">{service.name}</h3>
 												</div>
-												<div className={`grid gap-3 ${service.requiresToolEmail ? 'grid-cols-1' : 'sm:grid-cols-2'}`}>
-													{service.selectionType === 'duration' ? (
+												<div className="grid grid-cols-1 gap-3">
+													{service.products ? (
+														<div className="grid gap-3 sm:grid-cols-2">
+															{service.products.map((product) => {
+																const selected = selectedDuration === product.id;
+																return (
+																	<button
+																		className={`flex min-h-24 items-center gap-3 rounded-xl border p-3 text-left transition ${selected ? 'border-sky-400 bg-sky-400/15 ring-1 ring-sky-400' : product.highlighted ? 'border-slate-400 bg-slate-200/10 hover:border-sky-400' : 'border-[#294572] bg-[#07142e] hover:border-sky-400'}`}
+																		type="button"
+																		key={product.id}
+																		aria-pressed={selected}
+																		onClick={() => setCreditSelections((current) => ({ ...current, [service.id]: product.id }))}
+																	>
+																		<span className="grid h-14 w-14 shrink-0 place-items-center rounded-lg border border-[#294572] bg-[#0a1d3a] text-[10px] font-bold tracking-wide text-sky-300" aria-hidden="true">{product.icon}</span>
+																		<span className="min-w-0 flex-1">
+																			<span className="block text-sm font-semibold text-white">{product.name}</span>
+																			<span className="mt-1 block text-xs text-slate-400">{product.description}</span>
+																		</span>
+																		<strong className="shrink-0 text-sm text-sky-300">{formatPrice(product.price)} USD</strong>
+																	</button>
+																);
+															})}
+														</div>
+													) : service.selectionType === 'duration' ? (
 														<label className="grid gap-1.5 text-xs font-medium text-slate-300">
 															Duration / license type
 															<select
@@ -899,7 +931,9 @@ export default function App() {
 													</label>
 												</div>
 												<div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-													<p className="text-sm font-semibold text-amber-200">Contact for price/payment</p>
+													<p className={`text-sm font-semibold ${service.products ? 'text-sky-300' : 'text-amber-200'}`}>
+														{service.products ? `${formatPrice(service.products.find((product) => product.id === selectedDuration)?.price ?? 0)} USD selected` : 'Contact for price/payment'}
+													</p>
 													<button
 														className="min-h-9 rounded-lg border border-sky-800 bg-[#092342] px-4 text-xs font-semibold text-sky-200 transition hover:border-sky-400 hover:bg-[#0d3458] disabled:cursor-not-allowed disabled:opacity-50"
 														type="button"
@@ -974,8 +1008,8 @@ export default function App() {
 											Checkout total <small className="mt-1 block text-xs font-normal text-slate-400">{cart.length} {cart.length === 1 ? 'item' : 'items'}</small>
 										</span>
 										<strong className="text-right text-xl text-sky-300">
-											{hasCredits && !hasDevices && !hasRepairs ? 'Contact for payment' : formatPrice(orderTotal)}
-											{!(hasCredits && !hasDevices && !hasRepairs) && <small className="text-xs font-normal text-slate-400"> USD</small>}
+											{formatPrice(orderTotal)}
+											<small className="text-xs font-normal text-slate-400"> USD</small>
 										</strong>
 									</div>
 									{hasUnpricedDevices && (
@@ -985,7 +1019,7 @@ export default function App() {
 									)}
 									{hasCredits && (
 										<p className="mb-3 text-xs leading-5 text-amber-200" role="status">
-											Server credit pricing and payment will be confirmed separately.
+											{hasUnpricedCredits ? 'Unpriced server credit requests require separate price confirmation. Priced UnlockTool options are included in the total.' : 'Priced UnlockTool options are included in the checkout total.'}
 										</p>
 									)}
 								</>
