@@ -38,7 +38,7 @@ type CartItem = {
 type ServerCreditService = {
 	id: string;
 	name: string;
-	selectionType: 'duration' | 'quantity';
+	selectionType: 'duration' | 'quantity' | 'request';
 	options?: string[];
 	products?: { id: string; name: string; description: string; price: number; icon: string; deliveryTime: string; summary: string; fullDescription: string; highlighted?: boolean }[];
 	targetLabel: string;
@@ -50,8 +50,7 @@ const serverCreditServices: ServerCreditService[] = [
 	{
 		id: 'eft-tool',
 		name: 'EFT Tool',
-		selectionType: 'duration',
-		options: ['1 Month', '3 Months', '6 Months', '1 Year'],
+		selectionType: 'request',
 		targetLabel: 'Tool account email',
 		requiresToolEmail: true,
 	},
@@ -66,7 +65,6 @@ const serverCreditServices: ServerCreditService[] = [
 			{ id: 'unlock-rent-6-hours', name: 'Rent [6 Hours] – Instant Auto API', description: 'All GSM Tools Rent Service – Instant Auto API', price: 1.2, icon: 'RENT', deliveryTime: 'Instant', summary: 'UnlockTool six-hour rental with instant auto-API processing.', fullDescription: 'Temporary six-hour UnlockTool access for supported servicing operations.' },
 		],
 		targetLabel: 'Tool account email',
-		requiresToolEmail: true,
 		requiresToolUsername: true,
 	},
 	{ id: 'samkey', name: 'Samkey Server Credits', selectionType: 'quantity', targetLabel: 'Device serial / username / account email' },
@@ -519,7 +517,7 @@ export default function App() {
 		const product = service.products?.find((item) => item.id === selection);
 		const description = product?.name ?? (service.selectionType === 'quantity'
 			? `${creditQuantities[service.id] || '1'} credit${creditQuantities[service.id] === '1' ? '' : 's'}`
-			: selection);
+			: service.selectionType === 'request' ? 'Service request' : selection);
 		if (!description) return;
 		if (service.requiresToolEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(creditTargets[service.id]?.trim() ?? '')) return;
 		if (service.requiresToolUsername && !creditUsernames[service.id]?.trim()) return;
@@ -868,7 +866,9 @@ export default function App() {
 										const validToolEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toolEmail);
 										const canAddSelection = service.selectionType === 'duration'
 											? selectedDuration.length > 0
-											: Number.isInteger(quantityValue) && quantityValue > 0;
+											: service.selectionType === 'quantity'
+												? Number.isInteger(quantityValue) && quantityValue > 0
+												: true;
 										const canAdd = canAddSelection
 											&& (!service.requiresToolEmail || validToolEmail)
 											&& (!service.requiresToolUsername || toolUsername.length > 0);
@@ -916,7 +916,7 @@ export default function App() {
 																{service.options?.map((option) => <option key={option} value={option}>{option}</option>)}
 															</select>
 														</label>
-													) : (
+													) : service.selectionType === 'quantity' ? (
 														<label className="grid gap-1.5 text-xs font-medium text-slate-300">
 															Credit quantity
 															<input
@@ -929,6 +929,10 @@ export default function App() {
 																onChange={(event) => setCreditQuantities((current) => ({ ...current, [service.id]: event.target.value }))}
 															/>
 														</label>
+													) : (
+														<p className="rounded-lg border border-[#294572] bg-[#07142e] px-3 py-2.5 text-sm text-slate-400">
+															Add an EFT Tool license request. The team will confirm the available license and price.
+														</p>
 													)}
 													{selectedProduct && (
 														<div className="overflow-hidden rounded-xl border border-[#294572] bg-[#07142e]">
@@ -954,19 +958,7 @@ export default function App() {
 																	<h5 className="font-semibold text-slate-100">Description</h5>
 																	<p className="mt-1 text-sm leading-6 text-slate-400">{selectedProduct.fullDescription}</p>
 																</div>
-																<div className="grid gap-3 sm:grid-cols-2">
-																	<label className="grid gap-1.5 text-xs font-medium text-slate-300">
-																		Tool account email <span className="text-red-300">Required</span>
-																		<input
-																			className="h-10 rounded-lg border border-[#294572] bg-[#091835] px-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-sky-400"
-																			type="email"
-																			autoComplete="email"
-																			placeholder="Email registered to UnlockTool"
-																			required
-																			value={creditTargets[service.id] ?? ''}
-																			onChange={(event) => setCreditTargets((current) => ({ ...current, [service.id]: event.target.value }))}
-																		/>
-																	</label>
+																<div className="grid gap-3">
 																	<label className="grid gap-1.5 text-xs font-medium text-slate-300">
 																		UnlockTool username <span className="text-red-300">Required</span>
 																		<input
