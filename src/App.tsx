@@ -601,7 +601,7 @@ export default function App() {
 		const payment = paymentMethod === 'local'
 			? `Local Transfer (${localRail.toUpperCase()})`
 			: paymentMethod === 'payoneer'
-				? 'Payoneer Link'
+				? 'Payoneer — please send a current payment link'
 				: 'PayPal';
 						const messageLines = [
 			devices.length && repairs.length
@@ -1124,7 +1124,12 @@ export default function App() {
 										<option value="paypal">PayPal</option>
 										<option value="wallet">Wallet credit</option>
 									</select>
-									{paymentMethod === 'wallet' && (
+										{paymentMethod === 'payoneer' && (
+											<p className="rounded-lg border border-orange-500/30 bg-orange-500/10 p-3 text-xs leading-5 text-orange-100" role="status">
+												Payoneer links can expire. Send your order request and we’ll provide a current payment link. No payment is collected here.
+											</p>
+										)}
+										{paymentMethod === 'wallet' && (
 										<p className="rounded-lg border border-sky-800/70 bg-sky-950/30 p-3 text-xs leading-5 text-sky-100" role="status">
 											{user
 												? `Available balance: ${formatWalletBalance(walletBalance)}. The server will verify catalog prices and balance before payment.`
@@ -1234,7 +1239,7 @@ export default function App() {
 								type="submit"
 								disabled={cart.length === 0 || checkoutBusy}
 							>
-								<span>{checkoutBusy ? 'Processing…' : paymentMethod === 'wallet' ? 'Pay with wallet credit' : hasDevices && hasRepairs ? 'Send combined request' : hasDevices ? 'Enquire on WhatsApp' : 'Send repair request'}</span>
+								<span>{checkoutBusy ? 'Processing…' : paymentMethod === 'wallet' ? 'Pay with wallet credit' : paymentMethod === 'payoneer' ? 'Request Payoneer payment link' : hasDevices && hasRepairs ? 'Send combined request' : hasDevices ? 'Enquire on WhatsApp' : 'Send repair request'}</span>
 								<ArrowIcon />
 							</button>
 							{checkoutNotice && (
@@ -1243,7 +1248,7 @@ export default function App() {
 								</p>
 							)}
 							<p className="mt-3 text-center text-[11px] text-slate-500">
-								{paymentMethod === 'wallet' ? 'Wallet orders are priced and charged securely on the server.' : 'No payment is collected here.'}
+								{paymentMethod === 'wallet' ? 'Wallet orders are priced and charged securely on the server.' : paymentMethod === 'payoneer' ? 'A current Payoneer link will be provided after you send your order request.' : 'No payment is collected here.'}
 							</p>
 						</aside>
 					</div>
