@@ -40,9 +40,10 @@ type ServerCreditService = {
 	name: string;
 	selectionType: 'duration' | 'quantity';
 	options?: string[];
-	products?: { id: string; name: string; description: string; price: number; icon: string; highlighted?: boolean }[];
+	products?: { id: string; name: string; description: string; price: number; icon: string; deliveryTime: string; summary: string; fullDescription: string; highlighted?: boolean }[];
 	targetLabel: string;
 	requiresToolEmail?: boolean;
+	requiresToolUsername?: boolean;
 };
 
 const serverCreditServices: ServerCreditService[] = [
@@ -59,13 +60,14 @@ const serverCreditServices: ServerCreditService[] = [
 		name: 'Unlock Tool',
 		selectionType: 'duration',
 		products: [
-			{ id: 'unlock-3-months', name: '3 Months Activation (90 Days)', description: 'UnlockTool Activation – Official Reseller', price: 18, icon: 'UT' },
-			{ id: 'unlock-6-months', name: '6 Months Activation (180 Days)', description: 'UnlockTool Activation – Official Reseller', price: 27, icon: 'UT' },
-			{ id: 'unlock-12-months', name: '12 Months Activation (360 Days)', description: 'UnlockTool Activation – Official Reseller', price: 45, icon: 'UT', highlighted: true },
-			{ id: 'unlock-rent-6-hours', name: 'Rent [6 Hours] – Instant Auto API', description: 'All GSM Tools Rent Service – Instant Auto API', price: 1.2, icon: 'RENT' },
+			{ id: 'unlock-3-months', name: '3 Months Activation (90 Days)', description: 'UnlockTool Activation – Official Reseller', price: 18, icon: 'UT', deliveryTime: '5–15 minutes', summary: '90-day UnlockTool account activation for supported GSM servicing operations.', fullDescription: 'Activate your UnlockTool account for 90 days. Check current device support before ordering.' },
+			{ id: 'unlock-6-months', name: '6 Months Activation (180 Days)', description: 'UnlockTool Activation – Official Reseller', price: 27, icon: 'UT', deliveryTime: '5–15 minutes', summary: '180-day UnlockTool account activation for supported GSM servicing operations.', fullDescription: 'Activate your UnlockTool account for 180 days. Check current device support before ordering.' },
+			{ id: 'unlock-12-months', name: '12 Months Activation (360 Days)', description: 'UnlockTool Activation – Official Reseller', price: 45, icon: 'UT', deliveryTime: '5–15 minutes', summary: '360-day UnlockTool account activation for supported GSM servicing operations.', fullDescription: 'Activate your UnlockTool account for 360 days. Check current device support before ordering.', highlighted: true },
+			{ id: 'unlock-rent-6-hours', name: 'Rent [6 Hours] – Instant Auto API', description: 'All GSM Tools Rent Service – Instant Auto API', price: 1.2, icon: 'RENT', deliveryTime: 'Instant', summary: 'UnlockTool six-hour rental with instant auto-API processing.', fullDescription: 'Temporary six-hour UnlockTool access for supported servicing operations.' },
 		],
 		targetLabel: 'Tool account email',
 		requiresToolEmail: true,
+		requiresToolUsername: true,
 	},
 	{ id: 'samkey', name: 'Samkey Server Credits', selectionType: 'quantity', targetLabel: 'Device serial / username / account email' },
 	{ id: 'samtmo', name: 'SamTMO', selectionType: 'quantity', targetLabel: 'Device serial / username / account email' },
@@ -341,6 +343,7 @@ export default function App() {
 	const [creditSelections, setCreditSelections] = useState<Record<string, string>>({});
 	const [creditQuantities, setCreditQuantities] = useState<Record<string, string>>({});
 	const [creditTargets, setCreditTargets] = useState<Record<string, string>>({});
+	const [creditUsernames, setCreditUsernames] = useState<Record<string, string>>({});
 
 	const refreshWalletBalance = useCallback(async (userId: string) => {
 		if (!supabase) return;
@@ -519,13 +522,19 @@ export default function App() {
 			: selection);
 		if (!description) return;
 		if (service.requiresToolEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(creditTargets[service.id]?.trim() ?? '')) return;
+		if (service.requiresToolUsername && !creditUsernames[service.id]?.trim()) return;
+
+		const targetDetails = [
+			creditTargets[service.id]?.trim() ? `Email: ${creditTargets[service.id].trim()}` : '',
+			creditUsernames[service.id]?.trim() ? `Username: ${creditUsernames[service.id].trim()}` : '',
+		].filter(Boolean).join(' | ');
 
 		setCart((current) => [...current, {
 			id: `${product?.id ?? service.id}-${Date.now()}-${current.length}`,
 			name: `${service.name} — ${description}`,
 			kind: 'credits',
 			price: product?.price ?? null,
-			identifier: creditTargets[service.id]?.trim() || undefined,
+			identifier: targetDetails || creditTargets[service.id]?.trim() || undefined,
 		}]);
 	};
 
@@ -628,7 +637,7 @@ export default function App() {
 			messageLines.push(
 				'',
 				'Server Credits for Box/Dongle:',
-				...credits.map((item) => `- ${item.name} (${item.price === null ? 'price to be confirmed' : `${formatPrice(item.price)} USD`})${item.identifier ? ` — Tool / account email: ${item.identifier}` : ''}`),
+				...credits.map((item) => `- ${item.name} (${item.price === null ? 'price to be confirmed' : `${formatPrice(item.price)} USD`})${item.identifier ? ` — Account details: ${item.identifier}` : ''}`),
 			);
 			if (hasUnpricedCredits) messageLines.push('Pricing and payment for unpriced server credit services will be confirmed by the team.');
 		}
@@ -846,7 +855,7 @@ export default function App() {
 								<div className="mb-5">
 									<p className="mb-2 text-[11px] font-bold tracking-[.17em] text-sky-400">SOFTWARE & LICENSES</p>
 									<h2 className="text-2xl font-bold leading-tight sm:text-3xl" id="server-credits-title">Server Credits for Box/Dongle</h2>
-									<p className="mt-2 text-sm leading-6 text-slate-400">Choose a license or credit quantity. We’ll confirm pricing and payment with you.</p>
+									<p className="mt-2 text-sm leading-6 text-slate-400">Choose an offer to view its details. UnlockTool prices are shown up front; other service pricing is confirmed by our team.</p>
 								</div>
 								<div className="grid gap-3">
 									{serverCreditServices.map((service) => {
@@ -854,11 +863,15 @@ export default function App() {
 										const quantity = creditQuantities[service.id] ?? '1';
 										const quantityValue = Number(quantity);
 										const toolEmail = creditTargets[service.id]?.trim() ?? '';
+										const toolUsername = creditUsernames[service.id]?.trim() ?? '';
+										const selectedProduct = service.products?.find((product) => product.id === selectedDuration);
 										const validToolEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toolEmail);
 										const canAddSelection = service.selectionType === 'duration'
 											? selectedDuration.length > 0
 											: Number.isInteger(quantityValue) && quantityValue > 0;
-										const canAdd = canAddSelection && (!service.requiresToolEmail || validToolEmail);
+										const canAdd = canAddSelection
+											&& (!service.requiresToolEmail || validToolEmail)
+											&& (!service.requiresToolUsername || toolUsername.length > 0);
 
 										return (
 											<article className="rounded-xl border border-[#243f70] bg-[#091835] p-4" key={service.id}>
@@ -917,22 +930,77 @@ export default function App() {
 															/>
 														</label>
 													)}
-													<label className={`grid gap-1.5 text-xs font-medium text-slate-300 ${service.requiresToolEmail ? 'sm:max-w-md' : ''}`}>
-														{service.targetLabel}{service.requiresToolEmail && <span className="text-red-300">Required</span>}
-														<input
-															className="h-10 rounded-lg border border-[#294572] bg-[#07142e] px-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-sky-400"
-															type={service.requiresToolEmail ? 'email' : 'text'}
-															autoComplete={service.requiresToolEmail ? 'email' : 'off'}
-															placeholder={service.requiresToolEmail ? 'Enter the email registered to this tool' : 'Enter target details (optional)'}
-															required={service.requiresToolEmail}
-															value={creditTargets[service.id] ?? ''}
-															onChange={(event) => setCreditTargets((current) => ({ ...current, [service.id]: event.target.value }))}
-														/>
-													</label>
+													{selectedProduct && (
+														<div className="overflow-hidden rounded-xl border border-[#294572] bg-[#07142e]">
+															<div className="grid min-h-32 place-items-center bg-gradient-to-br from-[#0c2850] to-[#09152d] p-6">
+																<span className="grid h-16 w-16 place-items-center rounded-2xl border border-sky-400/40 bg-sky-400/10 text-sm font-black tracking-widest text-sky-200" aria-hidden="true">{selectedProduct.icon}</span>
+															</div>
+															<div className="grid gap-4 p-4">
+																<div className="flex items-start justify-between gap-3">
+																	<div>
+																		<h4 className="text-lg font-semibold text-white">{selectedProduct.name}</h4>
+																		<p className="mt-1 text-xs text-slate-400">{selectedProduct.description}</p>
+																	</div>
+																	<strong className="shrink-0 text-xl text-sky-300">{formatPrice(selectedProduct.price)} USD</strong>
+																</div>
+																<div className="flex flex-wrap gap-2 text-[11px] font-semibold">
+																	<span className="rounded bg-orange-500 px-2.5 py-1 text-white">Server Service</span>
+																	<span className="rounded border border-[#294572] px-2.5 py-1 text-slate-300">Digital</span>
+																	<span className="rounded border border-emerald-500/70 px-2.5 py-1 text-emerald-300">In Stock</span>
+																</div>
+																<p className="text-xs text-slate-400">Delivery time: {selectedProduct.deliveryTime}</p>
+																<p className="text-sm leading-6 text-slate-300">{selectedProduct.summary}</p>
+																<div className="border-t border-[#294572] pt-3">
+																	<h5 className="font-semibold text-slate-100">Description</h5>
+																	<p className="mt-1 text-sm leading-6 text-slate-400">{selectedProduct.fullDescription}</p>
+																</div>
+																<div className="grid gap-3 sm:grid-cols-2">
+																	<label className="grid gap-1.5 text-xs font-medium text-slate-300">
+																		Tool account email <span className="text-red-300">Required</span>
+																		<input
+																			className="h-10 rounded-lg border border-[#294572] bg-[#091835] px-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-sky-400"
+																			type="email"
+																			autoComplete="email"
+																			placeholder="Email registered to UnlockTool"
+																			required
+																			value={creditTargets[service.id] ?? ''}
+																			onChange={(event) => setCreditTargets((current) => ({ ...current, [service.id]: event.target.value }))}
+																		/>
+																	</label>
+																	<label className="grid gap-1.5 text-xs font-medium text-slate-300">
+																		UnlockTool username <span className="text-red-300">Required</span>
+																		<input
+																			className="h-10 rounded-lg border border-[#294572] bg-[#091835] px-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-sky-400"
+																			type="text"
+																			autoComplete="username"
+																			placeholder="Username registered to UnlockTool"
+																			required
+																			value={creditUsernames[service.id] ?? ''}
+																			onChange={(event) => setCreditUsernames((current) => ({ ...current, [service.id]: event.target.value }))}
+																		/>
+																	</label>
+																</div>
+															</div>
+														</div>
+													)}
+													{!service.products && (
+														<label className="grid gap-1.5 text-xs font-medium text-slate-300">
+															{service.targetLabel}{service.requiresToolEmail && <span className="text-red-300">Required</span>}
+															<input
+																className="h-10 rounded-lg border border-[#294572] bg-[#07142e] px-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-sky-400"
+																type={service.requiresToolEmail ? 'email' : 'text'}
+																autoComplete={service.requiresToolEmail ? 'email' : 'off'}
+																placeholder={service.requiresToolEmail ? 'Enter the email registered to this tool' : 'Enter target details (optional)'}
+																required={service.requiresToolEmail}
+																value={creditTargets[service.id] ?? ''}
+																onChange={(event) => setCreditTargets((current) => ({ ...current, [service.id]: event.target.value }))}
+															/>
+														</label>
+													)}
 												</div>
 												<div className="mt-4 flex flex-wrap items-center justify-between gap-3">
 													<p className={`text-sm font-semibold ${service.products ? 'text-sky-300' : 'text-amber-200'}`}>
-														{service.products ? `${formatPrice(service.products.find((product) => product.id === selectedDuration)?.price ?? 0)} USD selected` : 'Contact for price/payment'}
+														{service.products ? (selectedProduct ? `${formatPrice(selectedProduct.price)} USD selected` : 'Select an offer to see details') : 'Contact for price/payment'}
 													</p>
 													<button
 														className="min-h-9 rounded-lg border border-sky-800 bg-[#092342] px-4 text-xs font-semibold text-sky-200 transition hover:border-sky-400 hover:bg-[#0d3458] disabled:cursor-not-allowed disabled:opacity-50"
@@ -974,7 +1042,7 @@ export default function App() {
 											<div className="min-w-0">
 												<p className="break-words text-sm text-slate-200">{item.name}</p>
 												<p className="mt-1 text-xs text-slate-500">{item.price === null ? 'Contact for price' : `${formatPrice(item.price)} USD`}</p>
-												{item.identifier && <p className="mt-1 break-all text-xs text-slate-500">{item.kind === 'credits' ? 'Target: ' : 'IMEI / Serial: '}{item.identifier}</p>}
+												{item.identifier && <p className="mt-1 break-all text-xs text-slate-500">{item.kind === 'credits' ? 'Account details: ' : 'IMEI / Serial: '}{item.identifier}</p>}
 											</div>
 											<button
 												className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-[#294572] text-slate-400 transition hover:border-red-400 hover:text-red-300"
