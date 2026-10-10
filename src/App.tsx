@@ -41,6 +41,7 @@ type ServerCreditService = {
 	selectionType: 'duration' | 'quantity';
 	options?: string[];
 	targetLabel: string;
+	requiresToolEmail?: boolean;
 };
 
 const serverCreditServices: ServerCreditService[] = [
@@ -49,14 +50,16 @@ const serverCreditServices: ServerCreditService[] = [
 		name: 'EFT Tool',
 		selectionType: 'duration',
 		options: ['1 Month', '3 Months', '6 Months', '1 Year'],
-		targetLabel: 'Device serial / username / account email',
+		targetLabel: 'Tool account email',
+		requiresToolEmail: true,
 	},
 	{
 		id: 'unlock-tool',
 		name: 'Unlock Tool',
 		selectionType: 'duration',
 		options: ['1 Month', '3 Months', '6 Months', '1 Year'],
-		targetLabel: 'Device serial / username / account email',
+		targetLabel: 'Tool account email',
+		requiresToolEmail: true,
 	},
 	{ id: 'samkey', name: 'Samkey Server Credits', selectionType: 'quantity', targetLabel: 'Device serial / username / account email' },
 	{ id: 'samtmo', name: 'SamTMO', selectionType: 'quantity', targetLabel: 'Device serial / username / account email' },
@@ -505,6 +508,7 @@ export default function App() {
 			? creditSelections[service.id]
 			: `${creditQuantities[service.id] || '1'} credit${creditQuantities[service.id] === '1' ? '' : 's'}`;
 		if (!selection) return;
+		if (service.requiresToolEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(creditTargets[service.id]?.trim() ?? '')) return;
 
 		setCart((current) => [...current, {
 			id: `${service.id}-${Date.now()}-${current.length}`,
@@ -839,9 +843,12 @@ export default function App() {
 										const selectedDuration = creditSelections[service.id] ?? '';
 										const quantity = creditQuantities[service.id] ?? '1';
 										const quantityValue = Number(quantity);
-										const canAdd = service.selectionType === 'duration'
+										const toolEmail = creditTargets[service.id]?.trim() ?? '';
+										const validToolEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toolEmail);
+										const canAddSelection = service.selectionType === 'duration'
 											? selectedDuration.length > 0
 											: Number.isInteger(quantityValue) && quantityValue > 0;
+										const canAdd = canAddSelection && (!service.requiresToolEmail || validToolEmail);
 
 										return (
 											<article className="rounded-xl border border-[#243f70] bg-[#091835] p-4" key={service.id}>
@@ -851,7 +858,7 @@ export default function App() {
 													</span>
 													<h3 className="font-semibold text-slate-100">{service.name}</h3>
 												</div>
-												<div className="grid gap-3 sm:grid-cols-2">
+												<div className={`grid gap-3 ${service.requiresToolEmail ? 'grid-cols-1' : 'sm:grid-cols-2'}`}>
 													{service.selectionType === 'duration' ? (
 														<label className="grid gap-1.5 text-xs font-medium text-slate-300">
 															Duration / license type
@@ -878,12 +885,14 @@ export default function App() {
 															/>
 														</label>
 													)}
-													<label className="grid gap-1.5 text-xs font-medium text-slate-300">
-														{service.targetLabel}
+													<label className={`grid gap-1.5 text-xs font-medium text-slate-300 ${service.requiresToolEmail ? 'sm:max-w-md' : ''}`}>
+														{service.targetLabel}{service.requiresToolEmail && <span className="text-red-300">Required</span>}
 														<input
 															className="h-10 rounded-lg border border-[#294572] bg-[#07142e] px-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-sky-400"
-															autoComplete="off"
-															placeholder="Enter target details (optional)"
+															type={service.requiresToolEmail ? 'email' : 'text'}
+															autoComplete={service.requiresToolEmail ? 'email' : 'off'}
+															placeholder={service.requiresToolEmail ? 'Enter the email registered to this tool' : 'Enter target details (optional)'}
+															required={service.requiresToolEmail}
 															value={creditTargets[service.id] ?? ''}
 															onChange={(event) => setCreditTargets((current) => ({ ...current, [service.id]: event.target.value }))}
 														/>
