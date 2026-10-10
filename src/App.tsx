@@ -811,10 +811,46 @@ export default function App() {
 					</div>
 				</form>
 
+				<section className="mt-16 grid gap-8 rounded-2xl border border-blue-300/15 bg-[#091835] p-8 md:grid-cols-2">
+					<div>
+						<p className="mb-1 text-xs font-bold tracking-[.16em] text-sky-400">ABOUT US</p>
+						<h2 className="mb-4 text-2xl font-bold">Exclusive Mobile Solutions</h2>
+						<p className="leading-relaxed text-slate-400">
+							We're your trusted local mobile specialists. From brand-new devices to professional repair services and software tools, we deliver comprehensive mobile solutions with expert support and competitive pricing. Device care, done right.
+						</p>
+					</div>
+					<div>
+						<p className="mb-1 text-xs font-bold tracking-[.16em] text-sky-400">GET IN TOUCH</p>
+						<h3 className="mb-4 text-xl font-bold">Contact Us</h3>
+						<div className="space-y-3">
+							<div>
+								<p className="text-xs font-semibold text-slate-300">Email</p>
+								<a
+									href="mailto:info@exclusivemobilesolutions.com"
+									className="text-sm text-sky-400 transition hover:text-sky-300"
+								>
+									info@exclusivemobilesolutions.com
+								</a>
+							</div>
+							<div>
+								<p className="text-xs font-semibold text-slate-300">WhatsApp Support</p>
+								<a
+									href={`https://wa.me/${whatsappNumber}`}
+									target="_blank"
+									rel="noopener noreferrer"
+									className="text-sm text-sky-400 transition hover:text-sky-300"
+								>
+									Chat with us on WhatsApp
+								</a>
+							</div>
+						</div>
+					</div>
+				</section>
+
 				<footer className="pt-16 text-center text-[10px] font-bold tracking-[.16em] text-slate-600">
 					EXCLUSIVE MOBILE SOLUTIONS <span className="px-2 text-sky-400">·</span> DEVICE CARE, DONE RIGHT
 				</footer>
 			</div>
 		</main>
-	);
+		);
 }
