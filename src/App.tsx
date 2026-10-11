@@ -5,7 +5,7 @@ import { isSupabaseConfigured, supabase } from './lib/supabase';
 
 type OrderType = 'devices' | 'repairs';
 type CartKind = OrderType | 'credits';
-type PaymentMethod = 'local' | 'payoneer' | 'paypal' | 'wallet';
+type PaymentMethod = 'local' | 'payoneer' | 'wipay' | 'paypal' | 'wallet';
 type LocalRail = 'lynk' | 'ncb' | 'scotiabank';
 
 type Device = {
@@ -602,7 +602,9 @@ export default function App() {
 			? `Local Transfer (${localRail.toUpperCase()})`
 			: paymentMethod === 'payoneer'
 				? 'Payoneer — please send a current payment link'
-				: 'PayPal';
+				: paymentMethod === 'wipay'
+					? 'WiPay — please send current payment instructions'
+					: 'PayPal';
 						const messageLines = [
 			devices.length && repairs.length
 				? '*EXCLUSIVE MOBILE SOLUTIONS - DEVICE PURCHASE AND REPAIR REQUEST*'
@@ -1116,17 +1118,23 @@ export default function App() {
 										value={paymentMethod}
 										onChange={(event) => {
 											const value = event.target.value;
-											setPaymentMethod(value === 'payoneer' || value === 'paypal' || value === 'wallet' ? value : 'local');
+											setPaymentMethod(value === 'payoneer' || value === 'wipay' || value === 'paypal' || value === 'wallet' ? value : 'local');
 										}}
 									>
 										<option value="local">Local transfer</option>
 										<option value="payoneer">Payoneer payment link</option>
+										<option value="wipay">WiPay</option>
 										<option value="paypal">PayPal</option>
 										<option value="wallet">Wallet credit</option>
 									</select>
 										{paymentMethod === 'payoneer' && (
 											<p className="rounded-lg border border-orange-500/30 bg-orange-500/10 p-3 text-xs leading-5 text-orange-100" role="status">
 												Payoneer links can expire. Send your order request and we’ll provide a current payment link. No payment is collected here.
+											</p>
+										)}
+										{paymentMethod === 'wipay' && (
+											<p className="rounded-lg border border-sky-500/30 bg-sky-500/10 p-3 text-xs leading-5 text-sky-100" role="status">
+												Select WiPay to request current payment instructions after you send your order. No payment is collected here.
 											</p>
 										)}
 										{paymentMethod === 'wallet' && (
@@ -1239,7 +1247,7 @@ export default function App() {
 								type="submit"
 								disabled={cart.length === 0 || checkoutBusy}
 							>
-								<span>{checkoutBusy ? 'Processing…' : paymentMethod === 'wallet' ? 'Pay with wallet credit' : paymentMethod === 'payoneer' ? 'Request Payoneer payment link' : hasDevices && hasRepairs ? 'Send combined request' : hasDevices ? 'Enquire on WhatsApp' : 'Send repair request'}</span>
+								<span>{checkoutBusy ? 'Processing…' : paymentMethod === 'wallet' ? 'Pay with wallet credit' : paymentMethod === 'payoneer' ? 'Request Payoneer payment link' : paymentMethod === 'wipay' ? 'Request WiPay payment instructions' : hasDevices && hasRepairs ? 'Send combined request' : hasDevices ? 'Enquire on WhatsApp' : 'Send repair request'}</span>
 								<ArrowIcon />
 							</button>
 							{checkoutNotice && (
@@ -1248,7 +1256,7 @@ export default function App() {
 								</p>
 							)}
 							<p className="mt-3 text-center text-[11px] text-slate-500">
-								{paymentMethod === 'wallet' ? 'Wallet orders are priced and charged securely on the server.' : paymentMethod === 'payoneer' ? 'A current Payoneer link will be provided after you send your order request.' : 'No payment is collected here.'}
+								{paymentMethod === 'wallet' ? 'Wallet orders are priced and charged securely on the server.' : paymentMethod === 'payoneer' ? 'A current Payoneer link will be provided after you send your order request.' : paymentMethod === 'wipay' ? 'Current WiPay payment instructions will be provided after you send your order request.' : 'No payment is collected here.'}
 							</p>
 						</aside>
 					</div>
