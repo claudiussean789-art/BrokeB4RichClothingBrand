@@ -38,11 +38,16 @@ export default function AccountPanel({
 }: AccountPanelProps) {
 	const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
 	const [fullName, setFullName] = useState('');
+	const [username, setUsername] = useState('');
+	const [phone, setPhone] = useState('');
+	const [address, setAddress] = useState('');
 	const [email, setEmail] = useState('');
 	const [password, setPassword] = useState('');
 	const [amount, setAmount] = useState('25');
 	const [selectedPreset, setSelectedPreset] = useState<number | null>(25);
 	const [topupMethod, setTopupMethod] = useState<'paypal' | 'manual'>('paypal');
+	const [manualReference, setManualReference] = useState('');
+	const [manualReceipt, setManualReceipt] = useState<File | null>(null);
 	const [profile, setProfile] = useState<WalletProfile | null>(null);
 	const [topups, setTopups] = useState<WalletTopup[]>([]);
 	const [orders, setOrders] = useState<WalletOrder[]>([]);
@@ -68,9 +73,9 @@ export default function AccountPanel({
 		setErrorMessage('');
 		const client = getSupabase();
 		void Promise.all([
-			client.from('profiles').select('id,email,full_name,credit_balance').eq('id', user.id).single(),
-			client.from('wallet_topups').select('id,amount,currency,method,status,created_at').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20),
-			client.from('wallet_orders').select('id,items,total,currency,payment_method,status,created_at').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20),
+			client.from('profiles').select('id,email,full_name,username,phone,address,credit_balance').eq('id', user.id).single(),
+			client.from('wallet_topups').select('id,amount,currency,method,status,receipt_path,created_at').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20),
+			client.from('wallet_orders').select('id,items,total,currency,payment_method,status,payment_reference,crypto_txid,created_at').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20),
 			client.from('wallet_transactions').select('id,amount,kind,description,created_at').eq('user_id', user.id).order('created_at', { ascending: false }).limit(30),
 		]).then(([profileResult, topupResult, orderResult, transactionResult]) => {
 			const failure = profileResult.error ?? topupResult.error ?? orderResult.error ?? transactionResult.error;
@@ -100,14 +105,25 @@ export default function AccountPanel({
 		try {
 			const client = getSupabase();
 			if (authMode === 'signup') {
+				const normalizedUsername = username.trim().toLowerCase();
+				if (!/^[a-z0-9_.-]{3,30}$/.test(normalizedUsername)) {
+					throw new Error('Username must be 3–30 characters using letters, numbers, dots, underscores, or hyphens.');
+				}
 				const { data, error } = await client.auth.signUp({
 					email: email.trim(),
 					password,
-					options: { data: { full_name: fullName.trim() } },
+					options: {
+						data: {
+							full_name: fullName.trim(),
+							username: normalizedUsername,
+							phone: phone.trim(),
+							address: address.trim(),
+						},
+					},
 				});
 				if (error) throw error;
 				if (data.session) onUserChange(data.session.user);
-				else setSuccessMessage('Check your email for the confirmation link, then sign in.');
+				else setSuccessMessage('Your account was created. Check your email for the confirmation link, then sign in using your email and password.');
 			} else {
 				const { data, error } = await client.auth.signInWithPassword({ email: email.trim(), password });
 				if (error) throw error;
@@ -125,9 +141,9 @@ export default function AccountPanel({
 		if (!user) return;
 		const client = getSupabase();
 		const [profileResult, topupResult, orderResult, transactionResult] = await Promise.all([
-			client.from('profiles').select('id,email,full_name,credit_balance').eq('id', user.id).single(),
-			client.from('wallet_topups').select('id,amount,currency,method,status,created_at').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20),
-			client.from('wallet_orders').select('id,items,total,currency,payment_method,status,created_at').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20),
+			client.from('profiles').select('id,email,full_name,username,phone,address,credit_balance').eq('id', user.id).single(),
+			client.from('wallet_topups').select('id,amount,currency,method,status,receipt_path,created_at').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20),
+			client.from('wallet_orders').select('id,items,total,currency,payment_method,status,payment_reference,crypto_txid,created_at').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20),
 			client.from('wallet_transactions').select('id,amount,kind,description,created_at').eq('user_id', user.id).order('created_at', { ascending: false }).limit(30),
 		]);
 		const failure = profileResult.error ?? topupResult.error ?? orderResult.error ?? transactionResult.error;
@@ -150,6 +166,19 @@ export default function AccountPanel({
 			if (!Number.isFinite(value) || value < 1 || value > 10000 || Number(value.toFixed(2)) !== value) {
 				throw new Error('Enter an amount from $1.00 to $10,000.00, up to two decimal places.');
 			}
+			if (topupMethod === 'manual') {
+				if (!manualReference.trim()) throw new Error('Enter the bank transfer reference.');
+				if (manualReference.trim().length < 3 || manualReference.trim().length > 200) throw new Error('The transfer reference must be 3–200 characters.');
+				if (!manualReceipt) throw new Error('Upload your bank transfer receipt.');
+				if (manualReceipt.size > 5 * 1024 * 1024) throw new Error('Receipt files must be 5 MB or smaller.');
+				if (!['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(manualReceipt.type)) {
+					throw new Error('Upload a JPG, PNG, WEBP, or PDF receipt.');
+				}
+			}
+			const receiptFile = manualReceipt;
+			if (topupMethod === 'manual' && (!receiptFile || !user)) {
+				throw new Error('Sign in and select a receipt before submitting a manual top-up.');
+			}
 			const client = getSupabase();
 			const { data: topup, error } = await client.rpc('request_wallet_topup', {
 				p_amount: value,
@@ -168,10 +197,32 @@ export default function AccountPanel({
 				return;
 			}
 
+			if (!user || !receiptFile) throw new Error('Sign in and select a receipt before submitting a manual top-up.');
+			const extensionByType: Record<string, string> = {
+				'image/jpeg': 'jpg',
+				'image/png': 'png',
+				'image/webp': 'webp',
+				'application/pdf': 'pdf',
+			};
+			const receiptPath = `${user.id}/${topup.id}.${extensionByType[receiptFile.type]}`;
+			const { error: uploadError } = await client.storage.from('wallet-payment-receipts').upload(receiptPath, receiptFile, {
+				contentType: receiptFile.type,
+				upsert: false,
+			});
+			if (uploadError) throw uploadError;
+			const { error: receiptError } = await client.rpc('submit_manual_topup_receipt', {
+				p_topup_id: topup.id,
+				p_receipt_path: receiptPath,
+				p_payment_reference: manualReference.trim(),
+			});
+			if (receiptError) throw receiptError;
+
 			await refreshWallet();
-			const message = `I submitted a manual wallet top-up request for ${walletCurrency(value)}. Pending request ID: ${topup.id}. Please provide payment instructions. I will only request credit after support verifies the payment.`;
+			const message = `I submitted an NCB bank transfer receipt for ${walletCurrency(value)}. Pending request ID: ${topup.id}. My transfer reference is ${manualReference.trim()}. Please verify my receipt.`;
 			setManualTopupUrl(`https://wa.me/2034235212?text=${encodeURIComponent(message)}`);
-			setSuccessMessage('Manual top-up request created and saved as pending. Contact support with the request details before paying; credit is added after verification.');
+			setManualReference('');
+			setManualReceipt(null);
+			setSuccessMessage('Your transfer receipt was submitted securely. The top-up stays pending while support verifies the transfer. Once confirmed, your wallet is credited and a receipt is emailed to your account address.');
 		} catch (topupError) {
 			setErrorMessage(displayError(topupError));
 			try {
@@ -238,13 +289,28 @@ export default function AccountPanel({
 						</div>
 						<form className="grid gap-4" onSubmit={handleAuth}>
 							{authMode === 'signup' && (
-								<label className="grid gap-2 text-xs font-semibold text-slate-300">
-									Full name
-									<input className="h-11 rounded-lg border border-[#294572] bg-[#07142e] px-3 text-sm text-white outline-none focus:border-sky-400" autoComplete="name" required value={fullName} onChange={(event) => setFullName(event.target.value)} />
-								</label>
+								<>
+									<p className="text-xs leading-5 text-slate-400">Create your customer profile. Your username is for your profile; sign in with your email address.</p>
+									<label className="grid gap-2 text-xs font-semibold text-slate-300">
+										Full name
+										<input className="h-11 rounded-lg border border-[#294572] bg-[#07142e] px-3 text-sm text-white outline-none focus:border-sky-400" autoComplete="name" required value={fullName} onChange={(event) => setFullName(event.target.value)} />
+									</label>
+									<label className="grid gap-2 text-xs font-semibold text-slate-300">
+										Username
+										<input className="h-11 rounded-lg border border-[#294572] bg-[#07142e] px-3 text-sm text-white outline-none focus:border-sky-400" autoComplete="username" minLength={3} maxLength={30} pattern="[A-Za-z0-9_.-]{3,30}" title="Use 3–30 letters, numbers, dots, underscores, or hyphens." required value={username} onChange={(event) => setUsername(event.target.value)} />
+									</label>
+									<label className="grid gap-2 text-xs font-semibold text-slate-300">
+										Telephone number
+										<input className="h-11 rounded-lg border border-[#294572] bg-[#07142e] px-3 text-sm text-white outline-none focus:border-sky-400" type="tel" autoComplete="tel" required value={phone} onChange={(event) => setPhone(event.target.value)} />
+									</label>
+									<label className="grid gap-2 text-xs font-semibold text-slate-300">
+										Address
+										<textarea className="min-h-20 rounded-lg border border-[#294572] bg-[#07142e] px-3 py-2 text-sm text-white outline-none focus:border-sky-400" autoComplete="street-address" required value={address} onChange={(event) => setAddress(event.target.value)} />
+									</label>
+								</>
 							)}
 							<label className="grid gap-2 text-xs font-semibold text-slate-300">
-								Email
+								{authMode === 'signin' ? 'Email address' : 'Email address for sign-in'}
 								<input className="h-11 rounded-lg border border-[#294572] bg-[#07142e] px-3 text-sm text-white outline-none focus:border-sky-400" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} />
 							</label>
 							<label className="grid gap-2 text-xs font-semibold text-slate-300">
@@ -262,6 +328,9 @@ export default function AccountPanel({
 							<div className="min-w-0">
 								<p className="break-all text-sm font-semibold text-slate-100">{profile?.full_name || user.email}</p>
 								<p className="mt-1 text-xs text-slate-400">{user.email}</p>
+								{profile?.username && <p className="mt-1 text-xs text-slate-400">Username: {profile.username}</p>}
+								{profile?.phone && <p className="mt-1 text-xs text-slate-400">Phone: {profile.phone}</p>}
+								{profile?.address && <p className="mt-1 text-xs text-slate-400">{profile.address}</p>}
 							</div>
 							<div className="text-right">
 								<p className="text-[10px] font-bold tracking-wider text-slate-400">WALLET BALANCE</p>
@@ -292,16 +361,24 @@ export default function AccountPanel({
 								</label>
 								<label className={`flex cursor-pointer items-center gap-2 rounded-lg border p-3 text-sm ${topupMethod === 'manual' ? 'border-sky-500 bg-sky-500/10 text-white' : 'border-[#294572] text-slate-300'}`}>
 									<input type="radio" name="topupMethod" value="manual" checked={topupMethod === 'manual'} onChange={() => setTopupMethod('manual')} />
-									Manual payment — pending review
+									NCB bank transfer — pending verification
 								</label>
 							</div>
 							{topupMethod === 'manual' && (
-								<p className="rounded-lg border border-amber-700/40 bg-amber-950/20 p-3 text-xs leading-5 text-amber-100">
-									This creates a pending request only. Contact support with your request details; your wallet will be credited once an administrator verifies receipt. Never provide a payment reference as proof of payment.
-								</p>
+								<div className="grid gap-3 rounded-lg border border-amber-700/40 bg-amber-950/20 p-3">
+									<p className="text-xs leading-5 text-amber-100">After making your NCB transfer, enter its reference and upload the receipt. Your balance is credited only after support verifies the payment. We aim to review submissions within 5–15 minutes; bank or support delays may take longer.</p>
+									<label className="grid gap-2 text-xs font-semibold text-slate-300">
+										NCB transfer reference
+										<input className="h-11 rounded-lg border border-[#294572] bg-[#081630] px-3 text-sm text-white outline-none focus:border-sky-400" maxLength={200} required value={manualReference} onChange={(event) => setManualReference(event.target.value)} />
+									</label>
+									<label className="grid gap-2 text-xs font-semibold text-slate-300">
+										Transfer receipt (JPG, PNG, WEBP, or PDF; max 5 MB)
+										<input className="text-xs text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-sky-500 file:px-3 file:py-2 file:font-bold file:text-[#03142a]" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" required onChange={(event) => setManualReceipt(event.target.files?.[0] ?? null)} />
+									</label>
+								</div>
 							)}
 							<button className="min-h-11 rounded-lg bg-sky-500 px-4 text-sm font-bold text-[#03142a] hover:bg-sky-300 disabled:opacity-50" type="submit" disabled={busy}>
-								{busy ? 'Processing…' : topupMethod === 'paypal' ? 'Continue to PayPal' : 'Submit manual top-up request'}
+								{busy ? 'Processing…' : topupMethod === 'paypal' ? 'Continue to PayPal' : 'Submit transfer receipt'}
 							</button>
 						</form>
 
@@ -311,7 +388,7 @@ export default function AccountPanel({
 								{topups.length ? <ul className="grid gap-2">
 									{topups.map((topup) => (
 										<li className="flex items-center justify-between gap-3 rounded-lg border border-blue-300/10 bg-[#07142e] p-3 text-sm" key={topup.id}>
-											<div><p className="font-semibold">{currency(topup.amount, topup.currency)} · {topup.method === 'paypal' ? 'PayPal' : 'Manual'}</p><p className="mt-1 text-xs text-slate-500">{dateTime(topup.created_at)}</p></div>
+											<div><p className="font-semibold">{currency(topup.amount, topup.currency)} · {topup.method === 'paypal' ? 'PayPal' : 'NCB bank transfer'}</p><p className="mt-1 text-xs text-slate-500">{dateTime(topup.created_at)}{topup.method === 'manual' && topup.receipt_path ? ' · Receipt submitted' : ''}</p></div>
 											<span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${topup.status === 'completed' ? 'bg-emerald-950 text-emerald-300' : 'bg-amber-950 text-amber-200'}`}>{topup.status}</span>
 										</li>
 									))}
@@ -323,8 +400,9 @@ export default function AccountPanel({
 								{orders.length ? <ul className="grid gap-2">
 									{orders.map((order) => (
 										<li className="rounded-lg border border-blue-300/10 bg-[#07142e] p-3 text-sm" key={order.id}>
-											<div className="flex justify-between gap-3"><strong>{order.total === null ? 'Price to be confirmed' : currency(order.total, order.currency)}</strong><span className="text-xs capitalize text-slate-400">{order.status} · {order.payment_method}</span></div>
+											<div className="flex justify-between gap-3"><strong>{order.total === null ? 'Price to be confirmed' : currency(order.total, order.currency)}</strong><span className="text-xs capitalize text-slate-400">{order.status.replace(/_/g, ' ')} · {order.payment_method}</span></div>
 											<p className="mt-2 text-xs leading-5 text-slate-400">{Array.isArray(order.items) ? order.items.map((item) => item.name).join(', ') : 'Order items'} · {dateTime(order.created_at)}</p>
+											{order.crypto_txid && <p className="mt-1 break-all text-xs text-slate-500">TXID: {order.crypto_txid}</p>}
 										</li>
 									))}
 								</ul> : <p className="rounded-lg border border-blue-300/10 bg-[#07142e] p-3 text-sm text-slate-500">No orders yet.</p>}

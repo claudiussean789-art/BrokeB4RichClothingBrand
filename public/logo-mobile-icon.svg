@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-label="Exclusive Mobile Solutions mobile logo">
+  <defs>
+    <linearGradient id="g1" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#67e8f9"/>
+      <stop offset="100%" stop-color="#38bdf8"/>
+    </linearGradient>
+  </defs>
+  <rect width="160" height="160" rx="28" fill="#071b39"/>
+  <rect x="25" y="25" width="110" height="110" rx="22" fill="none" stroke="url(#g1)" stroke-width="8"/>
+  <path d="M56 110V50c0-7 6-13 13-13h17c7 0 13 6 13 13v20h-9V50H69v60h-13Zm34 0V69h16c15 0 26 11 26 25s-11 26-26 26H90V110Zm9-9h7c9 0 16-7 16-17s-7-17-16-17h-7v34Z" fill="#e2f4ff"/>
+  <path d="M113 53h15v9h-15zm0 16h15v9h-15zm0 16h15v9h-15z" fill="url(#g1)"/>
+</svg>

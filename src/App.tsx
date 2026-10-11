@@ -2,10 +2,12 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import type { User } from '@supabase/supabase-js';
 import AccountPanel from './components/AccountPanel';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
+import { cryptoPayment } from './data/cryptoPayment';
+import { highlightedWholesaleTags, wholesaleServices, wholesaleTags } from './data/wholesaleServices';
 
-type OrderType = 'devices' | 'repairs';
+type OrderType = 'devices' | 'repairs' | 'wholesale';
 type CartKind = OrderType | 'credits';
-type PaymentMethod = 'local' | 'payoneer' | 'wipay' | 'paypal' | 'wallet';
+type PaymentMethod = 'local' | 'payoneer' | 'wipay' | 'paypal' | 'wallet' | 'crypto';
 type LocalRail = 'lynk' | 'ncb' | 'scotiabank';
 
 type Device = {
@@ -23,7 +25,7 @@ type RepairService = {
 	id: string;
 	name: string;
 	category: string;
-	price: number;
+	price: number | null;
 };
 
 type CartItem = {
@@ -50,6 +52,7 @@ const serverCreditServices: ServerCreditService[] = [
 		id: 'eft-tool',
 		name: 'EFT Tool',
 		selectionType: 'duration',
+		requiresToolEmail: true,
 		products: [
 			{ id: 'eft-1-month', name: '1 Month Activation (30 Days)', description: 'EFT Tool Activation – Official Reseller', price: 20, icon: 'EFT', image: 'https://images.unsplash.com/photo-1616469829941-c7200edec809?w=600&auto=format&fit=crop&q=80', deliveryTime: '5–15 Minutes', summary: 'EFT Tool 1 Month / 30 Days account activation for supported GSM servicing operations. Check current device support before ordering.', fullDescription: 'Activate your EFT Tool account with the 1 Month Activation (30 Days) license for supported mobile servicing work.' },
 			{ id: 'eft-3-months', name: '3 Months Activation (90 Days)', description: 'EFT Tool Activation – Official Reseller', price: 18, icon: 'EFT', image: 'https://images.unsplash.com/photo-1616469829941-c7200edec809?w=600&auto=format&fit=crop&q=80', deliveryTime: '5–15 Minutes', summary: 'EFT Tool 3 Months / 90 Days account activation for supported GSM servicing operations. Check current device support before ordering.', fullDescription: 'Activate your EFT Tool account with the 3 Months Activation (90 Days) license for supported mobile servicing work.' },
@@ -62,6 +65,7 @@ const serverCreditServices: ServerCreditService[] = [
 		id: 'unlock-tool',
 		name: 'Unlock Tool',
 		selectionType: 'duration',
+		requiresToolEmail: true,
 		products: [
 			{ id: 'unlock-3-months', name: '3 Months Activation (90 Days)', description: 'UnlockTool Activation – Official Reseller', price: 18, icon: 'UT', image: 'https://images.unsplash.com/photo-1616469829941-c7200edec809?w=600&auto=format&fit=crop&q=80', deliveryTime: '5–15 Minutes', summary: 'UnlockTool 3 Months / 90 Days account activation for supported GSM servicing operations. Check current device support before ordering.', fullDescription: 'Activate your UnlockTool account with the 3 Months Activation (90 Days) license for supported mobile servicing work.' },
 			{ id: 'unlock-6-months', name: '6 Months Activation (180 Days)', description: 'UnlockTool Activation – Official Reseller', price: 27, icon: 'UT', image: 'https://images.unsplash.com/photo-1616469829941-c7200edec809?w=600&auto=format&fit=crop&q=80', deliveryTime: '5–15 Minutes', summary: 'UnlockTool 6 Months / 180 Days account activation for supported GSM servicing operations. Check current device support before ordering.', fullDescription: 'Activate your UnlockTool account with the 6 Months Activation (180 Days) license for supported mobile servicing work.' },
@@ -234,6 +238,16 @@ const repairServices: RepairService[] = [
 	{ id: 'software', name: 'Software Flash', category: 'Software', price: 25 },
 	{ id: 'galaxy-a54-frp', name: 'Galaxy A54 5G FRP Service', category: 'Samsung FRP', price: 35 },
 	{ id: 'samsung-frp-other', name: 'Samsung Galaxy FRP Service (Other Models)', category: 'Samsung FRP', price: 35 },
+	{ id: 'ps4-repair', name: 'PS4 Repair / Diagnostic', category: 'Game Repair', price: 60 },
+	{ id: 'ps5-repair', name: 'PS5 Repair / Diagnostic', category: 'Game Repair', price: 75 },
+	{ id: 'xbox-repair', name: 'Xbox Repair / Diagnostic', category: 'Game Repair', price: 60 },
+	{ id: 'nintendo-repair', name: 'Nintendo Repair / Diagnostic', category: 'Game Repair', price: 60 },
+	{ id: 'controller-repair', name: 'Controller Repair for All Systems', category: 'Game Repair', price: 35 },
+	{ id: 'console-cleaning', name: 'Console Cleaning / Fan Service', category: 'Game Repair', price: 30 },
+	{ id: 'pc-repair', name: 'PC Repair / Diagnostic', category: 'Computer Repair', price: 65 },
+	{ id: 'laptop-repair', name: 'Laptop Repair / Diagnostic', category: 'Computer Repair', price: 70 },
+	{ id: 'camera-installation', name: 'Security Camera Installation', category: 'Camera Services', price: null },
+	{ id: 'camera-troubleshooting', name: 'Security Camera Troubleshooting', category: 'Camera Services', price: null },
 	{ id: 'port', name: 'Charging Port', category: 'Hardware', price: 30 },
 	{ id: 'battery', name: 'Battery Replacement', category: 'Hardware', price: 35 },
 ];
@@ -273,7 +287,12 @@ const countries = [
 ];
 
 const formatPrice = (price: number) =>
-	new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(price);
+	new Intl.NumberFormat('en-US', {
+		style: 'currency',
+		currency: 'USD',
+		minimumFractionDigits: Number.isInteger(price) ? 0 : 2,
+		maximumFractionDigits: 2,
+	}).format(price);
 const formatWalletBalance = (balance: number) =>
 	new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(balance);
 
@@ -292,6 +311,17 @@ function DeviceIcon({ className = 'h-5 w-5' }: { className?: string }) {
 			<rect x="6.5" y="2.5" width="11" height="19" rx="2" />
 			<path strokeLinecap="round" d="M10 5h4M11 18.5h2" />
 		</svg>
+	);
+}
+
+function BrandLogo() {
+	return (
+		<a className="inline-flex items-center" href="#top" aria-label="Exclusive Mobile Solutions home">
+			<picture>
+				<source media="(max-width: 639px)" srcSet="/logo-mobile-icon.svg" />
+				<img src="/logo-desktop-horizontal.svg" alt="Exclusive Mobile Solutions" className="h-9 w-auto sm:h-12" />
+			</picture>
+		</a>
 	);
 }
 
@@ -323,7 +353,7 @@ export default function App() {
 	const [orderType, setOrderType] = useState<OrderType>('devices');
 	const [searchQuery, setSearchQuery] = useState('');
 	const [cart, setCart] = useState<CartItem[]>([]);
-	const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('local');
+	const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('crypto');
 	const [user, setUser] = useState<User | null>(null);
 	const [authLoading, setAuthLoading] = useState(true);
 	const [walletBalance, setWalletBalance] = useState(0);
@@ -332,9 +362,14 @@ export default function App() {
 	const [accountRefreshKey, setAccountRefreshKey] = useState(0);
 	const [checkoutNotice, setCheckoutNotice] = useState('');
 	const [checkoutBusy, setCheckoutBusy] = useState(false);
+	const [guestCheckout, setGuestCheckout] = useState(false);
+	const [navigationOpen, setNavigationOpen] = useState(false);
 	const paypalReturnHandled = useRef(false);
 	const [localRail, setLocalRail] = useState<LocalRail>('lynk');
 	const [customerName, setCustomerName] = useState('');
+	const [customerEmail, setCustomerEmail] = useState('');
+	const [customerPhone, setCustomerPhone] = useState('');
+	const [cryptoTxid, setCryptoTxid] = useState('');
 	const [address, setAddress] = useState('');
 	const [country, setCountry] = useState('');
 	const [stateRegion, setStateRegion] = useState('');
@@ -344,6 +379,8 @@ export default function App() {
 	const [creditSelections, setCreditSelections] = useState<Record<string, string>>({});
 	const [creditQuantities, setCreditQuantities] = useState<Record<string, string>>({});
 	const [creditTargets, setCreditTargets] = useState<Record<string, string>>({});
+	const [wholesaleTag, setWholesaleTag] = useState<string | null>(null);
+	const [wholesaleSearch, setWholesaleSearch] = useState('');
 
 	const refreshWalletBalance = useCallback(async (userId: string) => {
 		if (!supabase) return;
@@ -351,6 +388,10 @@ export default function App() {
 		if (error) throw error;
 		setWalletBalance(Number(data.credit_balance));
 	}, []);
+
+	useEffect(() => {
+		if (user?.email) setCustomerEmail((current) => current || user.email || '');
+	}, [user?.email]);
 
 	useEffect(() => {
 		if (!supabase) {
@@ -402,9 +443,42 @@ export default function App() {
 			return;
 		}
 
-		const topupId = currentUrl.searchParams.get('wallet_topup');
+		if (currentUrl.searchParams.has('paypal_order_cancelled')) {
+			currentUrl.searchParams.delete('paypal_order_cancelled');
+			window.history.replaceState({}, document.title, `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`);
+			setCheckoutNotice('PayPal checkout was cancelled. No payment was captured. Rebuild your cart to start another checkout.');
+			paypalReturnHandled.current = true;
+			return;
+		}
+
+		const orderId = currentUrl.searchParams.get('paypal_order');
 		const paypalOrderId = currentUrl.searchParams.get('token');
-		if (!topupId || !paypalOrderId || !user || !supabase || paypalReturnHandled.current) return;
+		if (orderId && paypalOrderId && user && supabase && !paypalReturnHandled.current) {
+			paypalReturnHandled.current = true;
+			currentUrl.searchParams.delete('paypal_order');
+			currentUrl.searchParams.delete('token');
+			currentUrl.searchParams.delete('PayerID');
+			window.history.replaceState({}, document.title, `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`);
+			setCheckoutNotice('Verifying PayPal payment…');
+			void supabase.functions.invoke('capture-paypal-order-checkout', {
+				body: { orderId, paypalOrderId },
+			}).then(({ data, error }) => {
+				if (error) throw error;
+				if (data?.status !== 'completed') throw new Error('PayPal payment was not confirmed. The order remains unpaid.');
+				setCart([]);
+				setCheckoutNotice(`PayPal payment confirmed. Order ${String(data.orderId).slice(0, 8)} is paid.`);
+				setAccountNotice('Your PayPal order payment is confirmed and recorded in account activity.');
+				setAccountOpen(true);
+				setAccountRefreshKey((key) => key + 1);
+			}).catch((error: unknown) => {
+				setCheckoutNotice(error instanceof Error ? error.message : 'Could not verify the PayPal payment. The order remains unpaid.');
+			});
+			return;
+		}
+
+		const topupId = currentUrl.searchParams.get('wallet_topup');
+		const paypalTopupOrderId = currentUrl.searchParams.get('token');
+		if (!topupId || !paypalTopupOrderId || !user || !supabase || paypalReturnHandled.current) return;
 		paypalReturnHandled.current = true;
 		currentUrl.searchParams.delete('wallet_topup');
 		currentUrl.searchParams.delete('token');
@@ -413,7 +487,7 @@ export default function App() {
 		setAccountOpen(true);
 		setAccountNotice('Verifying PayPal payment…');
 		void supabase.functions.invoke('capture-paypal-topup', {
-			body: { topupId, paypalOrderId },
+			body: { topupId, paypalOrderId: paypalTopupOrderId },
 		}).then(async ({ data, error }) => {
 			if (error) throw error;
 			if (data?.status !== 'completed') throw new Error('PayPal payment was not confirmed. No wallet credit was added.');
@@ -441,18 +515,31 @@ export default function App() {
 
 	);
 	const filteredSamsungFrpServices = filteredServices.filter((service) => service.category === 'Samsung FRP');
-	const filteredOtherServices = filteredServices.filter((service) => service.category !== 'Samsung FRP');
+	const filteredGameRepairServices = filteredServices.filter((service) => service.category === 'Game Repair');
+	const filteredComputerRepairServices = filteredServices.filter((service) => service.category === 'Computer Repair');
+	const filteredCameraServices = filteredServices.filter((service) => service.category === 'Camera Services');
+	const filteredOtherServices = filteredServices.filter((service) => !['Samsung FRP', 'Game Repair', 'Computer Repair', 'Camera Services'].includes(service.category));
+	const filteredWholesaleServices = wholesaleServices.filter((service) => {
+		const query = wholesaleSearch.trim().toLocaleLowerCase();
+		const matchesQuery = !query || `${service.title} ${service.description} ${service.category} ${service.tags.join(' ')}`
+			.toLocaleLowerCase()
+			.includes(query);
+		return matchesQuery && (!wholesaleTag || service.tags.includes(wholesaleTag));
+	});
 
 	const hasRepairs = cart.some((item) => item.kind === 'repairs');
 	const hasDevices = cart.some((item) => item.kind === 'devices');
 	const hasCredits = cart.some((item) => item.kind === 'credits');
+	const hasWholesale = cart.some((item) => item.kind === 'wholesale');
 	const hasUnpricedCredits = cart.some((item) => item.kind === 'credits' && item.price === null);
 	const hasUnpricedDevices = cart.some((item) => item.kind === 'devices' && item.price === null);
+	const hasUnpricedRepairs = cart.some((item) => item.kind === 'repairs' && item.price === null);
 	const unpricedDeviceCount = cart.filter((item) => item.kind === 'devices' && item.price === null).length;
 	const deviceTotal = cart.reduce((sum, item) => sum + (item.kind === 'devices' ? item.price ?? 0 : 0), 0);
 	const repairTotal = cart.reduce((sum, item) => sum + (item.kind === 'repairs' ? item.price ?? 0 : 0), 0);
 	const creditTotal = cart.reduce((sum, item) => sum + (item.kind === 'credits' ? item.price ?? 0 : 0), 0);
-	const orderTotal = deviceTotal + repairTotal + creditTotal;
+	const wholesaleTotal = cart.reduce((sum, item) => sum + (item.kind === 'wholesale' ? item.price ?? 0 : 0), 0);
+	const orderTotal = deviceTotal + repairTotal + creditTotal + wholesaleTotal;
 
 	const addDevice = (brand: string, device: Device) =>
 		setCart((current) => [...current, {
@@ -487,6 +574,14 @@ export default function App() {
 
 		}]);
 
+	const addWholesaleService = (service: (typeof wholesaleServices)[number]) =>
+		setCart((current) => [...current, {
+			id: service.id,
+			name: service.title,
+			kind: 'wholesale',
+			price: service.price,
+		}]);
+
 	const renderRepairServices = (services: RepairService[]) => (
 		<div className="divide-y divide-blue-300/10">
 			{services.map((service) => (
@@ -499,12 +594,12 @@ export default function App() {
 						<h3 className="mt-1 text-sm font-semibold text-slate-100 sm:text-base">{service.name}</h3>
 					</div>
 					<div className="flex shrink-0 flex-col items-end gap-2">
-						<strong className="text-sm">{formatPrice(service.price)}</strong>
+						<strong className="text-right text-sm">{service.price === null ? 'Contact for quote' : `${formatPrice(service.price)} USD`}</strong>
 						<button
 							className="min-h-8 rounded-lg border border-sky-800 bg-[#092342] px-3 text-xs font-semibold text-sky-200 transition hover:border-sky-400 hover:bg-[#0d3458]"
 							type="button"
 							onClick={() => addRepair(service)}
-							aria-label={`Add ${service.name} for ${formatPrice(service.price)}`}
+							aria-label={`Add ${service.name}${service.price === null ? '' : ` for ${formatPrice(service.price)}`}`}
 						>
 							Add service
 						</button>
@@ -528,7 +623,7 @@ export default function App() {
 		].filter(Boolean).join(' | ');
 
 		setCart((current) => [...current, {
-			id: `${product?.id ?? service.id}-${Date.now()}-${current.length}`,
+			id: product?.id ?? service.id,
 			name: `${service.name} — ${description}`,
 			kind: 'credits',
 			price: product?.price ?? null,
@@ -538,6 +633,15 @@ export default function App() {
 
 	const removeFromCart = (index: number) =>
 		setCart((current) => current.filter((_, itemIndex) => itemIndex !== index));
+
+	const continueAsGuest = () => {
+		setGuestCheckout(true);
+		setCheckoutNotice(cart.length ? '' : 'Choose one or more items, then complete the customer information to send your request as a guest.');
+		document.getElementById(cart.length ? 'checkout-summary' : 'catalog-title')?.scrollIntoView({
+			behavior: 'smooth',
+			block: 'start',
+		});
+	};
 
 	const handleWhatsAppCheckout = async (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault();
@@ -553,10 +657,10 @@ export default function App() {
 				return;
 			}
 			const hasWalletIneligibleItems = cart.some((item) =>
-				(item.kind !== 'devices' && item.kind !== 'repairs') || item.price === null,
+				!['devices', 'repairs', 'wholesale', 'credits'].includes(item.kind) || item.price === null,
 			);
 			if (cart.length === 0 || hasWalletIneligibleItems) {
-				setCheckoutNotice('Wallet checkout requires a cart containing only priced devices or repair services. Server Credits and unpriced catalog items must be requested separately.');
+				setCheckoutNotice('Wallet checkout requires every selected device or service to have a confirmed price. Remove unpriced items or request a quote separately.');
 				return;
 			}
 			setCheckoutBusy(true);
@@ -574,7 +678,8 @@ export default function App() {
 						state_region: stateRegion.trim(),
 						postal_code: postalCode.trim(),
 						device_model: deviceModel.trim(),
-						email: user.email ?? '',
+						email: customerEmail.trim() || user.email || '',
+						phone: customerPhone.trim(),
 					},
 				});
 				if (error) throw error;
@@ -595,9 +700,116 @@ export default function App() {
 			return;
 		}
 
+		if (paymentMethod === 'crypto') {
+			if (!user) {
+				setCheckoutNotice('Sign in or create an account to submit a crypto payment for verification.');
+				setAccountOpen(true);
+				return;
+			}
+			if (!supabase) {
+				setCheckoutNotice('Crypto checkout requires a configured Supabase project. No order was submitted.');
+				return;
+			}
+			if (cryptoPayment.usdtAddress.startsWith('YOUR_') || cryptoPayment.binancePayId.startsWith('YOUR_')) {
+				setCheckoutNotice('Crypto payment details are still placeholders. Update src/data/cryptoPayment.ts before accepting payments.');
+				return;
+			}
+			const txid = cryptoTxid.trim();
+			if (txid.length < 6 || txid.length > 200) {
+				setCheckoutNotice('Enter a valid transaction ID or Binance Pay ID (6–200 characters).');
+				return;
+			}
+			if (cart.some((item) => item.price === null)) {
+				setCheckoutNotice('Crypto payment requires a confirmed price for every cart item. Remove unpriced items and request a quote separately.');
+				return;
+			}
+			setCheckoutBusy(true);
+			try {
+				const { data: order, error } = await supabase.rpc('submit_crypto_order', {
+					p_items: cart.map((item) => ({
+						id: item.id,
+						kind: item.kind,
+						name: item.name,
+						identifier: item.identifier ?? null,
+					})),
+					p_customer: {
+						full_name: customerName.trim(),
+						address: address.trim(),
+						country,
+						state_region: stateRegion.trim(),
+						postal_code: postalCode.trim(),
+						device_model: deviceModel.trim(),
+						email: customerEmail.trim() || user.email || '',
+						phone: customerPhone.trim(),
+					},
+					p_txid: txid,
+				});
+				if (error) throw error;
+				if (!order?.id) throw new Error('The crypto payment order was not submitted.');
+				setCart([]);
+				setCryptoTxid('');
+				setCheckoutNotice(`Order ${String(order.id).slice(0, 8)} submitted. Status: Pending Verification. We will verify the transfer before processing your order.`);
+				setAccountNotice('Your crypto order is pending payment verification. The transaction ID is saved in your account history.');
+				setAccountRefreshKey((key) => key + 1);
+			} catch (error) {
+				setCheckoutNotice(error instanceof Error ? error.message : 'Could not submit the crypto order for verification.');
+			} finally {
+				setCheckoutBusy(false);
+			}
+			return;
+		}
+
+		if (paymentMethod === 'paypal') {
+			if (!user) {
+				setCheckoutNotice('Sign in or create an account before starting PayPal checkout.');
+				setAccountOpen(true);
+				return;
+			}
+			if (!supabase) {
+				setCheckoutNotice('PayPal checkout is unavailable until Supabase is configured.');
+				return;
+			}
+			setCheckoutBusy(true);
+			try {
+				const { data: order, error: orderError } = await supabase.rpc('create_order_request', {
+					p_items: cart.map((item) => ({
+						id: item.id,
+						kind: item.kind,
+						name: item.name,
+						identifier: item.identifier ?? null,
+					})),
+					p_customer: {
+						full_name: customerName.trim(),
+						address: address.trim(),
+						country,
+						state_region: stateRegion.trim(),
+						postal_code: postalCode.trim(),
+						device_model: deviceModel.trim(),
+						email: customerEmail.trim() || user.email || '',
+						phone: customerPhone.trim(),
+					},
+					p_payment_method: 'paypal',
+				});
+				if (orderError) throw orderError;
+				if (!order) throw new Error('The PayPal order request was not created.');
+				const { data, error } = await supabase.functions.invoke('create-paypal-order-checkout', {
+					body: { orderId: order.id },
+				});
+				if (error) throw error;
+				if (typeof data?.approvalUrl !== 'string') throw new Error(data?.error ?? 'PayPal did not return an approval link.');
+				window.location.assign(data.approvalUrl);
+			} catch (error) {
+				setCheckoutNotice(error instanceof Error ? error.message : 'Could not start PayPal checkout. No payment was taken.');
+			} finally {
+				setCheckoutBusy(false);
+			}
+			return;
+		}
+
 		const devices = cart.filter((item) => item.kind === 'devices');
 		const repairs = cart.filter((item) => item.kind === 'repairs');
 		const credits = cart.filter((item) => item.kind === 'credits');
+		const wholesale = cart.filter((item) => item.kind === 'wholesale');
 		const payment = paymentMethod === 'local'
 			? `Local Transfer (${localRail.toUpperCase()})`
 			: paymentMethod === 'payoneer'
@@ -606,14 +818,24 @@ export default function App() {
 					? 'WiPay — please send current payment instructions'
 					: 'PayPal';
 						const messageLines = [
-			devices.length && repairs.length
-				? '*EXCLUSIVE MOBILE SOLUTIONS - DEVICE PURCHASE AND REPAIR REQUEST*'
-				: devices.length
-					? '*EXCLUSIVE MOBILE SOLUTIONS - DEVICE PURCHASE*'
-					: repairs.length
+							devices.length && repairs.length && wholesale.length
+								? '*EXCLUSIVE MOBILE SOLUTIONS - DEVICE, REPAIR AND WHOLESALE REQUEST*'
+								: devices.length && repairs.length
+								? '*EXCLUSIVE MOBILE SOLUTIONS - DEVICE PURCHASE AND REPAIR REQUEST*'
+								: devices.length && wholesale.length
+									? '*EXCLUSIVE MOBILE SOLUTIONS - DEVICE AND WHOLESALE REQUEST*'
+									: repairs.length && wholesale.length
+										? '*EXCLUSIVE MOBILE SOLUTIONS - REPAIR AND WHOLESALE REQUEST*'
+										: devices.length
+									? '*EXCLUSIVE MOBILE SOLUTIONS - DEVICE PURCHASE*'
+									: repairs.length
 						? '*EXCLUSIVE MOBILE SOLUTIONS - REPAIR SERVICE ORDER*'
-						: '*EXCLUSIVE MOBILE SOLUTIONS - SERVER CREDITS REQUEST*',
+						: wholesale.length
+							? '*EXCLUSIVE MOBILE SOLUTIONS - WHOLESALE SERVICES REQUEST*'
+							: '*EXCLUSIVE MOBILE SOLUTIONS - SERVER CREDITS REQUEST*',
 			`Customer Name: ${customerName}`,
+			...(customerEmail.trim() ? [`Customer Email: ${customerEmail.trim()}`] : []),
+			...(customerPhone.trim() ? [`Customer Phone: ${customerPhone.trim()}`] : []),
 			`Address: ${address}`,
 			`Country: ${country}`,
 			`State / Parish / Province: ${stateRegion}`,
@@ -631,7 +853,7 @@ export default function App() {
 			);
 		}
 		if (repairs.length) {
-			messageLines.push('', 'Repair services:', ...repairs.map((item) => `- ${item.name} (${formatPrice(item.price ?? 0)} USD)`));
+			messageLines.push('', 'Repair services:', ...repairs.map((item) => `- ${item.name} (${item.price === null ? 'price to be confirmed' : `${formatPrice(item.price)} USD`})`));
 		}
 		if (credits.length) {
 			messageLines.push(
@@ -641,13 +863,24 @@ export default function App() {
 			);
 			if (hasUnpricedCredits) messageLines.push('Pricing and payment for unpriced server credit services will be confirmed by the team.');
 		}
-		messageLines.push('', `Device total: ${formatPrice(deviceTotal)} USD`, `Repair services total: ${formatPrice(repairTotal)} USD`, `Priced server credits total: ${formatPrice(creditTotal)} USD`);
+		if (wholesale.length) {
+			messageLines.push(
+				'',
+				'Wholesale services:',
+				...wholesale.map((item) => `- ${item.name} (${formatPrice(item.price ?? 0)} USD)`),
+			);
+		}
+		if (repairs.length) messageLines.push('', 'Appointment schedule: Monday–Saturday. Sunday emergency appointments only, 11:00 PM–3:00 AM.');
+		if (repairs.some((item) => item.id === 'camera-installation' || item.id === 'camera-troubleshooting')) {
+			messageLines.push('Camera service area requested: Montego Bay, Hopewell, Sandy Bay, and Lucea.');
+		}
+		messageLines.push('', `Device total: ${formatPrice(deviceTotal)} USD`, `Repair services total: ${formatPrice(repairTotal)} USD`, `Priced server credits total: ${formatPrice(creditTotal)} USD`, `Wholesale services total: ${formatPrice(wholesaleTotal)} USD`);
 		if (hasUnpricedDevices) messageLines.push('Note: device total excludes devices whose price is to be confirmed.');
+		if (hasUnpricedRepairs) messageLines.push('Note: repair service prices pending confirmation are excluded from the repair total.');
 		messageLines.push(
 			`Total amount: ${formatPrice(orderTotal)} USD${hasUnpricedCredits ? ' (unpriced server credits excluded until confirmed)' : ''}`,
 			`Payment method: ${payment}`,
 		);
-
 		const whatsappUrl =
 			`https://wa.me/${whatsappNumber}?text=${encodeURIComponent(messageLines.join('\n'))}`;
 		window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
@@ -664,12 +897,13 @@ export default function App() {
 					})),
 					p_customer: {
 		full_name: customerName.trim(),
+		email: customerEmail.trim() || user.email || '',
+		phone: customerPhone.trim(),
 		address: address.trim(),
 		country,
 		state_region: stateRegion.trim(),
 		postal_code: postalCode.trim(),
 		device_model: deviceModel.trim(),
-		email: user.email ?? '',
 					},
 					p_payment_method: paymentMethod,
 				});
@@ -688,16 +922,31 @@ export default function App() {
 
 	return (
 		<main className="min-h-screen bg-[#050d22] text-[#f4f7fc]">
+			<div className="promo-ticker-bar" aria-label="Announcements">
+				<a
+					className="ticker-content"
+					href="https://t.me/techfix_pro"
+					target="_blank"
+					rel="noopener noreferrer"
+				>
+					🔥 <span className="promo-highlight">SPECIAL PROMO:</span> Fast Carrier Unlocks &amp; Digital Tool Credits | Get 5% Off First Order | Contact Us on Telegram!
+				</a>
+			</div>
 			<header className="sticky top-0 z-10 border-b border-blue-300/15 bg-[#050d22]/95 backdrop-blur">
 				<div className="mx-auto flex min-h-[76px] w-[min(100%-2rem,1160px)] items-center justify-between gap-4">
-					<a className="flex items-center gap-3 text-sm font-bold tracking-wide text-white no-underline sm:text-base" href="#top">
-						<span className="grid h-11 w-11 place-items-center rounded-xl border border-sky-800 bg-[#071b39] text-sky-400">
-							<WrenchIcon />
-						</span>
-						<span>EXCLUSIVE <strong className="text-sky-400">MOBILE SOLUTIONS</strong></span>
-					</a>
+					<BrandLogo />
 					<div className="flex items-center gap-3">
 						<span className="hidden text-xs font-bold tracking-[.15em] text-slate-400 sm:block">DEVICE CARE, DONE RIGHT</span>
+						<button
+							className="grid h-10 w-10 place-items-center rounded-lg border border-white/25 text-xl text-white transition hover:border-sky-400 hover:text-sky-200"
+							type="button"
+							aria-label={navigationOpen ? 'Close navigation menu' : 'Open navigation menu'}
+							aria-expanded={navigationOpen}
+							aria-controls="site-navigation"
+							onClick={() => setNavigationOpen((open) => !open)}
+						>
+							{navigationOpen ? '×' : '☰'}
+						</button>
 						<button
 							className="min-h-10 rounded-lg border border-sky-700 px-3 text-xs font-bold text-sky-200 transition hover:border-sky-400 hover:bg-sky-950/50 sm:px-4 sm:text-sm"
 							type="button"
@@ -708,6 +957,29 @@ export default function App() {
 						</button>
 					</div>
 				</div>
+				{navigationOpen && (
+					<nav className="border-t border-blue-300/15 bg-[#091835]" id="site-navigation" aria-label="Main navigation">
+						<div className="mx-auto grid w-[min(100%-2rem,1160px)] gap-1 py-2 sm:grid-cols-2 lg:grid-cols-4">
+							<a className="rounded-lg px-4 py-3 text-sm font-medium text-slate-200 hover:bg-white/5 hover:text-sky-300" href="#top" onClick={() => setNavigationOpen(false)}>Home</a>
+							<a className="rounded-lg px-4 py-3 text-sm font-medium text-slate-200 hover:bg-white/5 hover:text-sky-300" href="#checkout-summary" onClick={() => setNavigationOpen(false)}>Place Order</a>
+							<a className="rounded-lg px-4 py-3 text-sm font-medium text-sky-200 hover:bg-white/5 hover:text-sky-100" href="#catalog-title" aria-current="page" onClick={() => setNavigationOpen(false)}>Products &amp; Services</a>
+							<button
+								className="rounded-lg px-4 py-3 text-left text-sm font-medium text-slate-200 hover:bg-white/5 hover:text-sky-300"
+								type="button"
+								onClick={() => { setNavigationOpen(false); setGuestCheckout(false); setAccountNotice(''); setAccountOpen(true); }}
+							>
+								Add Credit
+							</button>
+							<button
+								className="rounded-lg px-4 py-3 text-left text-sm font-medium text-slate-200 hover:bg-white/5 hover:text-sky-300"
+								type="button"
+								onClick={() => { setNavigationOpen(false); setGuestCheckout(false); setAccountNotice(''); setAccountOpen(true); }}
+							>
+								My Account
+							</button>
+						</div>
+					</nav>
+				)}
 			</header>
 			{accountOpen && (
 				<AccountPanel
@@ -721,6 +993,45 @@ export default function App() {
 			)}
 
 			<div className="mx-auto w-[min(100%-2rem,1120px)] pb-8" id="top">
+				<div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-b border-blue-300/15 py-3 text-xs text-slate-400">
+					<p className="font-semibold text-slate-300">
+						<a className="hover:text-sky-300" href="#top">Home</a>
+						<span aria-hidden="true" className="mx-2 text-slate-600">/</span>
+						<span>Products &amp; Services</span>
+					</p>
+					<p className="flex flex-wrap items-center gap-x-3 gap-y-1">
+						<span>{user ? `Welcome, ${user.user_metadata.full_name || user.email || 'customer'}` : 'Welcome, Guest'}</span>
+						<button
+							className="font-semibold text-sky-300 hover:text-white"
+							type="button"
+							onClick={() => { setGuestCheckout(false); setAccountNotice(''); setAccountOpen(true); }}
+						>
+							{user ? 'My Account' : 'Sign In'}
+						</button>
+						{!user && (
+							<button className="font-semibold text-emerald-300 hover:text-emerald-200" type="button" onClick={continueAsGuest}>
+								Checkout as Guest
+							</button>
+						)}
+					</p>
+				</div>
+				<div className="-mx-1 flex gap-2 overflow-x-auto px-1 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Popular service filters">
+					{['Google Pixel', 'FMI OFF for iPad WiFi', 'AT&T', 'T-Mobile — PRO', 'Mexico Nextel', 'iCloud'].map((tag) => (
+						<button
+							className="shrink-0 rounded-full border border-[#294572] bg-[#091835] px-3 py-1.5 text-xs font-medium text-sky-200 transition hover:border-sky-400 hover:bg-sky-950"
+							key={tag}
+							type="button"
+							onClick={() => {
+								setOrderType('wholesale');
+								setWholesaleSearch('');
+								setWholesaleTag(tag);
+								document.getElementById('catalog-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+							}}
+						>
+							{tag}
+						</button>
+					))}
+				</div>
 				<section className="py-12 sm:py-16" aria-labelledby="page-title">
 					<p className="mb-4 text-xs font-bold tracking-[.2em] text-sky-400">YOUR LOCAL MOBILE SPECIALISTS</p>
 					<h1 className="max-w-3xl text-5xl font-extrabold leading-[.98] sm:text-7xl" id="page-title">
@@ -731,7 +1042,7 @@ export default function App() {
 					</p>
 				</section>
 
-				<div className="mb-7 inline-flex w-full max-w-xl rounded-xl border border-blue-300/20 bg-[#091835] p-1.5" role="group" aria-label="Choose order type">
+				<div className="mb-7 grid w-full max-w-3xl grid-cols-1 gap-1.5 rounded-xl border border-blue-300/20 bg-[#091835] p-1.5 sm:grid-cols-3" role="group" aria-label="Choose order type">
 					<button
 						className={`flex min-h-12 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors sm:text-base ${orderType === 'devices' ? 'bg-sky-500 text-[#03142a]' : 'text-slate-300 hover:bg-white/5'}`}
 						type="button"
@@ -748,6 +1059,14 @@ export default function App() {
 					>
 						<WrenchIcon className="h-[18px] w-[18px]" /> Repair Services
 					</button>
+					<button
+						className={`flex min-h-12 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors sm:text-base ${orderType === 'wholesale' ? 'bg-sky-500 text-[#03142a]' : 'text-slate-300 hover:bg-white/5'}`}
+						type="button"
+						aria-pressed={orderType === 'wholesale'}
+						onClick={() => setOrderType('wholesale')}
+					>
+						Wholesale Services
+					</button>
 				</div>
 
 				<form onSubmit={handleWhatsAppCheckout}>
@@ -755,40 +1074,137 @@ export default function App() {
 						<section aria-labelledby="catalog-title">
 							<div className="mb-5 flex items-end justify-between gap-4">
 								<div>
-									<p className="mb-2 text-[11px] font-bold tracking-[.17em] text-sky-400">{orderType === 'devices' ? 'SHOP DEVICES' : 'BOOK A REPAIR'}</p>
+									<p className="mb-2 text-[11px] font-bold tracking-[.17em] text-sky-400">{orderType === 'devices' ? 'SHOP DEVICES' : orderType === 'repairs' ? 'BOOK A REPAIR' : 'WHOLESALE CATALOG'}</p>
 									<h2 className="text-3xl font-bold leading-tight sm:text-4xl" id="catalog-title">
-										{orderType === 'devices' ? 'Find your next phone' : 'What can we fix?'}
+										{orderType === 'devices' ? 'Find your next phone' : orderType === 'repairs' ? 'What can we fix?' : 'Products & services'}
 									</h2>
 								</div>
-								<span className="hidden text-sm text-slate-500 sm:block">{orderType === 'devices' ? 'Browse by brand' : `${filteredServices.length} services`}</span>
+								<span className="hidden text-sm text-slate-500 sm:block">{orderType === 'devices' ? 'Browse by brand' : orderType === 'repairs' ? `${filteredServices.length} services` : `${filteredWholesaleServices.length} services`}</span>
 							</div>
+							{orderType === 'repairs' && (
+								<div className="mb-4 rounded-xl border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-xs leading-5 text-sky-100">
+									<p>Appointment schedule: Monday–Saturday. Sunday emergency appointments only, 11:00 PM–3:00 AM.</p>
+									<p className="mt-1">Security camera installation and troubleshooting available in Montego Bay, Hopewell, Sandy Bay, and Lucea.</p>
+								</div>
+							)}
 
 							<label className="mb-7 flex min-h-12 items-center gap-3 rounded-xl border border-[#294572] bg-[#07142e] px-4 text-slate-400 transition focus-within:border-sky-400 focus-within:ring-2 focus-within:ring-sky-400/15">
 								<SearchIcon />
 								<input
 									className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-slate-500 sm:text-base"
 									type="search"
-									value={searchQuery}
-									onChange={(event) => setSearchQuery(event.target.value)}
-									placeholder={orderType === 'devices' ? 'Search all brands and models...' : 'Search repair services...'}
-									aria-label={orderType === 'devices' ? 'Search device brands and models' : 'Search repair services'}
+									value={orderType === 'wholesale' ? wholesaleSearch : searchQuery}
+									onChange={(event) => orderType === 'wholesale' ? setWholesaleSearch(event.target.value) : setSearchQuery(event.target.value)}
+									placeholder={orderType === 'devices' ? 'Search all brands and models...' : orderType === 'repairs' ? 'Search repair services...' : 'Search services, carriers or device models...'}
+									aria-label={orderType === 'devices' ? 'Search device brands and models' : orderType === 'repairs' ? 'Search repair services' : 'Search wholesale services'}
 								/>
-								{searchQuery && (
-									<button className="text-xs font-semibold text-sky-400 hover:text-white" type="button" onClick={() => setSearchQuery('')}>
+								{(orderType === 'wholesale' ? wholesaleSearch : searchQuery) && (
+									<button className="text-xs font-semibold text-sky-400 hover:text-white" type="button" onClick={() => orderType === 'wholesale' ? setWholesaleSearch('') : setSearchQuery('')}>
 										Clear
 									</button>
 								)}
 							</label>
 
-							{orderType === 'devices' ? (
+							{orderType === 'wholesale' ? (
+								<div className="rounded-2xl border border-[#243f70] bg-[#091835] p-4 sm:p-6">
+									<div className="mb-5 flex flex-col gap-3 border-b border-blue-300/15 pb-4 sm:flex-row sm:items-end sm:justify-between">
+										<div>
+											<p className="mb-1 text-[10px] font-bold uppercase tracking-[.18em] text-sky-400">Official unlock & service portal</p>
+											<h3 className="text-xl font-bold text-white">Available models &amp; services</h3>
+											<p className="mt-1 text-xs text-slate-400">Search the catalog or choose a tag to narrow the results.</p>
+										</div>
+										<span className="w-fit rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1 text-xs font-semibold text-sky-200">
+											{filteredWholesaleServices.length} {filteredWholesaleServices.length === 1 ? 'service' : 'services'}
+										</span>
+									</div>
+									<div className="mb-5">
+										<div className="mb-2 flex items-center justify-between gap-3">
+											<p className="text-[10px] font-bold tracking-wider text-slate-400">FILTER BY MODEL OR SERVICE</p>
+											<button
+												className="text-xs font-semibold text-sky-300 hover:text-white"
+												type="button"
+												onClick={() => { setWholesaleTag(null); setWholesaleSearch(''); }}
+											>
+												Reset filters
+											</button>
+										</div>
+										<div className="flex flex-wrap gap-2">
+											{wholesaleTags.map((tag) => {
+												const isHighlighted = highlightedWholesaleTags.has(tag);
+												const isSelected = wholesaleTag === tag;
+												return (
+													<button
+														className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition ${isSelected ? 'border-sky-400 bg-sky-500 text-[#03142a]' : isHighlighted ? 'border-amber-400/50 bg-amber-400/10 text-amber-100 hover:border-amber-300' : 'border-[#294572] bg-[#07142e] text-slate-300 hover:border-sky-400 hover:text-white'}`}
+														key={tag}
+														type="button"
+														aria-pressed={isSelected}
+														onClick={() => setWholesaleTag(isSelected ? null : tag)}
+													>
+														{tag}
+													</button>
+												);
+											})}
+										</div>
+									</div>
+									{filteredWholesaleServices.length ? (
+										<div className="grid gap-3 sm:grid-cols-2" aria-live="polite">
+											{filteredWholesaleServices.map((service) => (
+												<article className="flex min-w-0 flex-col rounded-xl border border-[#294572] bg-[#07142e] p-4 transition hover:border-sky-500/60" key={service.id}>
+													<div className="mb-2 flex items-center justify-between gap-3">
+														<span className={`rounded px-2 py-1 text-[9px] font-extrabold tracking-wide ${service.status === 'INSTANT' ? 'bg-emerald-400/15 text-emerald-200' : service.status === 'EXPRESS' ? 'bg-sky-400/15 text-sky-200' : service.status === 'HOT' ? 'bg-amber-400/15 text-amber-200' : service.status === 'SPECIAL' ? 'bg-rose-400/15 text-rose-200' : 'bg-violet-400/15 text-violet-200'}`}>
+															{service.status}
+														</span>
+														<span className="text-[11px] text-slate-400">{service.time}</span>
+													</div>
+													<p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">{service.category}</p>
+													<h4 className="text-sm font-bold leading-snug text-slate-100">{service.title}</h4>
+													<p className="mt-2 flex-1 text-xs leading-5 text-slate-400">{service.description}</p>
+													<div className="mt-3 flex flex-wrap gap-1.5 border-t border-blue-300/10 pt-3">
+														{service.tags.map((tag) => (
+															<span className="rounded bg-white/5 px-1.5 py-1 text-[9px] text-slate-400" key={tag}>{tag}</span>
+														))}
+													</div>
+													<div className="mt-3 flex items-center justify-between gap-3">
+														<span className="text-xs font-semibold text-slate-300">
+															{service.requestOnly
+																? <>Price <strong className="text-sky-300">{service.price.toFixed(4)} USD / check</strong></>
+																: <>Price <strong className="text-sky-300">{formatPrice(service.price)} USD</strong></>}
+														</span>
+														{service.requestOnly ? (
+															<a
+																className="inline-flex min-h-9 items-center rounded-lg border border-sky-500 px-3 text-xs font-bold text-sky-200 transition hover:bg-sky-500/10"
+																href={`https://wa.me/${whatsappNumber}?text=${encodeURIComponent(`Hello, I would like to request a Google Pixel information check. Listed price: $${service.price.toFixed(4)} per check.`)}`}
+																target="_blank"
+																rel="noopener noreferrer"
+															>
+																Request check
+															</a>
+														) : (
+															<button
+																className="min-h-9 rounded-lg bg-sky-500 px-3 text-xs font-bold text-[#03142a] transition hover:bg-sky-300"
+																type="button"
+																onClick={() => addWholesaleService(service)}
+															>
+																Add to cart
+															</button>
+														)}
+													</div>
+												</article>
+											))}
+										</div>
+									) : (
+										<div className="rounded-xl border border-blue-300/15 bg-[#07142e] p-7 text-center" role="status">
+											<p className="text-sm font-semibold text-slate-200">No matching models or services found</p>
+											<p className="mt-1 text-xs text-slate-400">Try another search or reset your filters.</p>
+										</div>
+									)}
+								</div>
+							) : orderType === 'devices' ? (
 								filteredBrands.length ? (
 									<div className="space-y-7" aria-live="polite">
-										{filteredBrands.map((brand) => (
-											<div key={brand.name}>
-												<div className="mb-2 flex items-center justify-between border-b border-blue-300/15 pb-2">
-													<h3 className="text-lg font-bold">{brand.name}</h3>
-													<span className="text-xs text-slate-500">{brand.devices.length} models</span>
-												</div>
+										{filteredBrands.map((brand) => {
+											const isDropdownModelGroup = ['iPhone', 'iPad', 'Apple Watch', 'Samsung', 'Samsung JDM Devices', 'Tecno', 'Xiaomi'].includes(brand.name);
+											const deviceRows = (
 												<div className="divide-y divide-blue-300/10">
 													{brand.devices.map((device) => (
 														<article className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 py-3" key={device.id}>
@@ -820,8 +1236,30 @@ export default function App() {
 														</article>
 													))}
 												</div>
-											</div>
-										))}
+											);
+
+											return (
+												<div key={brand.name}>
+													{isDropdownModelGroup ? (
+														<details className="group" open={normalizedQuery.length > 0}>
+															<summary className="mb-2 flex cursor-pointer items-center justify-between border-b border-blue-300/15 pb-2 text-lg font-bold marker:text-sky-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400">
+																<span>{brand.name}</span>
+																<span className="text-xs font-normal text-slate-500">{brand.devices.length} models</span>
+															</summary>
+															{deviceRows}
+														</details>
+													) : (
+														<>
+															<div className="mb-2 flex items-center justify-between border-b border-blue-300/15 pb-2">
+																<h3 className="text-lg font-bold">{brand.name}</h3>
+																<span className="text-xs text-slate-500">{brand.devices.length} models</span>
+															</div>
+															{deviceRows}
+														</>
+													)}
+												</div>
+											);
+										})}
 									</div>
 								) : (
 									<p className="rounded-xl border border-blue-300/15 bg-[#091835] p-6 text-center text-sm text-slate-400" role="status">
@@ -831,19 +1269,47 @@ export default function App() {
 							) : filteredServices.length ? (
 								<div className="space-y-8" aria-live="polite">
 									{filteredSamsungFrpServices.length > 0 && (
-										<section aria-labelledby="samsung-frp-title">
-										<div className="mb-2 border-b border-blue-300/15 pb-2">
-											<p className="text-[10px] font-bold uppercase tracking-wider text-sky-400">Dedicated service section</p>
-											<h3 className="text-lg font-bold" id="samsung-frp-title">Samsung FRP Services</h3>
-										</div>
-										{renderRepairServices(filteredSamsungFrpServices)}
-									</section>
+										<section aria-labelledby="samsung-frp-title" className="space-y-2">
+											<div className="border-b border-blue-300/15 pb-2">
+												<p className="text-[10px] font-bold uppercase tracking-wider text-sky-400">Dedicated</p>
+												<h3 className="text-base font-bold" id="samsung-frp-title">Samsung FRP</h3>
+											</div>
+											{renderRepairServices(filteredSamsungFrpServices)}
+										</section>
+									)}
+									{filteredGameRepairServices.length > 0 && (
+										<section aria-labelledby="game-repair-title" className="space-y-2">
+											<div className="border-b border-blue-300/15 pb-2">
+												<p className="text-[10px] font-bold uppercase tracking-wider text-sky-400">Console</p>
+												<h3 className="text-base font-bold" id="game-repair-title">Game & Controller Repair</h3>
+											</div>
+											{renderRepairServices(filteredGameRepairServices)}
+										</section>
+									)}
+									{filteredComputerRepairServices.length > 0 && (
+										<section aria-labelledby="computer-repair-title" className="space-y-2">
+											<div className="border-b border-blue-300/15 pb-2">
+												<p className="text-[10px] font-bold uppercase tracking-wider text-sky-400">Computer</p>
+												<h3 className="text-base font-bold" id="computer-repair-title">PC & Laptop Repair</h3>
+											</div>
+											{renderRepairServices(filteredComputerRepairServices)}
+										</section>
+									)}
+									{filteredCameraServices.length > 0 && (
+										<section aria-labelledby="camera-repair-title" className="space-y-2">
+											<div className="border-b border-blue-300/15 pb-2">
+												<p className="text-[10px] font-bold uppercase tracking-wider text-sky-400">Local service</p>
+												<h3 className="text-base font-bold" id="camera-repair-title">Security Camera Services</h3>
+												<p className="mt-1 text-xs text-slate-400">Montego Bay · Hopewell · Sandy Bay · Lucea</p>
+											</div>
+											{renderRepairServices(filteredCameraServices)}
+										</section>
 									)}
 									{filteredOtherServices.length > 0 && (
-										<section aria-labelledby="other-repairs-title">
-										<h3 className="mb-2 border-b border-blue-300/15 pb-2 text-lg font-bold" id="other-repairs-title">Other Repair Services</h3>
-										{renderRepairServices(filteredOtherServices)}
-									</section>
+										<section aria-labelledby="other-repairs-title" className="space-y-2">
+											<h3 className="border-b border-blue-300/15 pb-2 text-base font-bold" id="other-repairs-title">Other Services</h3>
+											{renderRepairServices(filteredOtherServices)}
+										</section>
 									)}
 								</div>) : (
 								<p className="rounded-xl border border-blue-300/15 bg-[#091835] p-6 text-center text-sm text-slate-400" role="status">
@@ -1033,7 +1499,7 @@ export default function App() {
 							</section>
 						</section>
 
-						<aside className="rounded-2xl border border-[#243f70] bg-[#091835] p-5 shadow-xl lg:sticky lg:top-24" aria-labelledby="summary-title">
+						<aside id="checkout-summary" className="rounded-2xl border border-[#243f70] bg-[#091835] p-5 shadow-xl lg:sticky lg:top-24" aria-labelledby="summary-title">
 							<div className="flex items-center justify-between">
 								<div>
 									<p className="mb-1 text-[10px] font-bold tracking-[.16em] text-sky-400">YOUR REQUEST</p>
@@ -1084,7 +1550,13 @@ export default function App() {
 									<strong>{formatPrice(deviceTotal)} <small className="text-xs font-normal text-slate-500">USD</small></strong>
 								</div>
 							)}
-							{(hasDevices || hasRepairs || hasCredits) && (
+							{hasWholesale && (
+								<div className={`flex items-center justify-between ${hasDevices || hasRepairs ? '' : 'border-t border-blue-300/15'} py-4`}>
+									<span className="text-sm text-slate-400">Wholesale services total</span>
+									<strong>{formatPrice(wholesaleTotal)} <small className="text-xs font-normal text-slate-500">USD</small></strong>
+								</div>
+							)}
+							{(hasDevices || hasRepairs || hasCredits || hasWholesale) && (
 								<>
 									<div className="my-2 flex items-center justify-between gap-3 rounded-xl border border-sky-500/40 bg-sky-500/10 px-4 py-4" aria-live="polite">
 										<span className="text-sm font-semibold text-slate-100">
@@ -1100,9 +1572,14 @@ export default function App() {
 											{unpricedDeviceCount} device {unpricedDeviceCount === 1 ? 'price is' : 'prices are'} pending confirmation and {unpricedDeviceCount === 1 ? 'is' : 'are'} not included in this total.
 										</p>
 									)}
+									{hasUnpricedRepairs && (
+										<p className="mb-3 text-xs leading-5 text-amber-200" role="status">
+											Repair service prices pending confirmation are excluded from the checkout total.
+										</p>
+									)}
 									{hasCredits && (
 										<p className="mb-3 text-xs leading-5 text-amber-200" role="status">
-											{hasUnpricedCredits ? 'Unpriced server credit requests require separate price confirmation. Priced UnlockTool options are included in the total.' : 'Priced UnlockTool options are included in the checkout total.'}
+											{hasUnpricedCredits ? 'Unpriced server-credit requests need a separate price confirmation. Priced tool-credit packages are included in the total.' : 'Priced tool-credit packages are included in the checkout total.'}
 										</p>
 									)}
 								</>
@@ -1118,15 +1595,59 @@ export default function App() {
 										value={paymentMethod}
 										onChange={(event) => {
 											const value = event.target.value;
-											setPaymentMethod(value === 'payoneer' || value === 'wipay' || value === 'paypal' || value === 'wallet' ? value : 'local');
+											setPaymentMethod(value === 'payoneer' || value === 'wipay' || value === 'paypal' || value === 'wallet' || value === 'crypto' ? value : 'local');
 										}}
 									>
 										<option value="local">Local transfer</option>
+										<option value="crypto">USDT / Binance Pay (Pending Verification)</option>
 										<option value="payoneer">Payoneer payment link</option>
 										<option value="wipay">WiPay</option>
 										<option value="paypal">PayPal</option>
 										<option value="wallet">Wallet credit</option>
 									</select>
+									{paymentMethod === 'crypto' && (
+										<div className="grid gap-3 rounded-lg border border-amber-500/30 bg-amber-950/20 p-3">
+											<div>
+												<p className="text-sm font-bold text-amber-100">Crypto payment — manual verification</p>
+										<p className="mt-1 text-xs leading-5 text-amber-100/80">Send <strong>{formatPrice(orderTotal)} USDT</strong> using TRC20 or Binance Pay, then enter the transaction ID below. Orders remain Pending Verification until payment is checked. A submitted TXID is not proof of payment.</p>
+											</div>
+											<div className="grid gap-2 rounded-lg border border-amber-300/15 bg-[#07142e] p-3 text-xs">
+												<p><span className="text-slate-400">USDT network:</span> <strong className="text-white">{cryptoPayment.usdtNetwork}</strong></p>
+												<p className="break-all"><span className="text-slate-400">USDT address:</span> <strong className="text-white">{cryptoPayment.usdtAddress}</strong></p>
+												<p className="break-all"><span className="text-slate-400">Binance Pay ID:</span> <strong className="text-white">{cryptoPayment.binancePayId}</strong></p>
+											</div>
+											{!cryptoPayment.qrImagePath.includes('UPDATE_WITH') && (
+												<img className="mx-auto max-h-48 rounded-lg bg-white p-2" src={cryptoPayment.qrImagePath} alt="USDT TRC20 payment QR code" />
+											)}
+											{cryptoPayment.qrImagePath.includes('UPDATE_WITH') && (
+												<p className="text-center text-xs text-slate-400">Add your QR image in src/data/cryptoPayment.ts to display it here.</p>
+											)}
+											{(cryptoPayment.usdtAddress.startsWith('YOUR_') || cryptoPayment.binancePayId.startsWith('YOUR_')) && (
+												<p className="rounded border border-amber-500/30 p-2 text-xs text-amber-100" role="status">Replace the crypto payment placeholders in src/data/cryptoPayment.ts before accepting payment.</p>
+											)}
+											{cart.some((item) => item.price === null) && (
+												<p className="rounded border border-amber-500/30 p-2 text-xs text-amber-100" role="status">One or more cart items need a confirmed price before crypto payment can be submitted.</p>
+											)}
+											<label className="grid gap-2 text-xs font-semibold text-slate-300">
+												Transaction ID (TXID) / Binance Pay ID
+												<input
+													className="h-11 rounded-lg border border-[#294572] bg-[#081630] px-3 text-sm text-white outline-none focus:border-sky-400"
+													autoComplete="off"
+													maxLength={200}
+													minLength={6}
+													required
+													value={cryptoTxid}
+													onChange={(event) => setCryptoTxid(event.target.value)}
+													placeholder="Enter the transaction reference after sending payment"
+												/>
+											</label>
+										</div>
+									)}
+										{paymentMethod === 'paypal' && (
+											<p className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-3 text-xs leading-5 text-blue-100" role="status">
+												Sign in or create an account here so your order can be saved. Then continue to PayPal to sign in or create a PayPal account and approve payment. You’ll return here after approval.
+											</p>
+										)}
 										{paymentMethod === 'payoneer' && (
 											<p className="rounded-lg border border-orange-500/30 bg-orange-500/10 p-3 text-xs leading-5 text-orange-100" role="status">
 												Payoneer links can expire. Send your order request and we’ll provide a current payment link. No payment is collected here.
@@ -1142,7 +1663,7 @@ export default function App() {
 											{user
 												? `Available balance: ${formatWalletBalance(walletBalance)}. The server will verify catalog prices and balance before payment.`
 												: 'Sign in to pay from your wallet.'}
-											{(hasUnpricedDevices || hasCredits) && ' Unpriced devices and server-credit items cannot be paid from the wallet; request confirmed prices separately.'}
+												{(hasUnpricedDevices || hasUnpricedRepairs || hasUnpricedCredits) && ' Items without confirmed prices cannot be paid from the wallet; request a quote separately.'}
 										</p>
 									)}
 									{paymentMethod === 'local' && (
@@ -1162,6 +1683,11 @@ export default function App() {
 									)}
 								</div>
 							)}
+							{guestCheckout && !user && (
+								<p className="mb-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs leading-5 text-emerald-100" role="status">
+									Guest checkout sends your request to WhatsApp and does not save it to account history. PayPal, crypto, and wallet payments require sign-in.
+								</p>
+							)}
 							<fieldset className="mb-5 grid gap-3 rounded-xl border border-blue-300/15 p-3">
 								<legend className="px-1 text-sm font-bold text-slate-100">Customer information</legend>
 								<label className="grid gap-2 text-xs font-semibold text-slate-300">
@@ -1176,6 +1702,36 @@ export default function App() {
 										onChange={(event) => setCustomerName(event.target.value)}
 									/>
 								</label>
+								{paymentMethod === 'payoneer' && (
+									<>
+										<label className="grid gap-2 text-xs font-semibold text-slate-300">
+											Email address for Payoneer
+											<input
+												className="h-11 rounded-lg border border-[#294572] bg-[#07142e] px-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-sky-400"
+												autoComplete="email"
+												name="customerEmail"
+												type="email"
+												placeholder="you@example.com"
+												required
+												value={customerEmail}
+												onChange={(event) => setCustomerEmail(event.target.value)}
+											/>
+										</label>
+										<label className="grid gap-2 text-xs font-semibold text-slate-300">
+											Phone number for Payoneer
+											<input
+												className="h-11 rounded-lg border border-[#294572] bg-[#07142e] px-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-sky-400"
+												autoComplete="tel"
+												name="customerPhone"
+												type="tel"
+												placeholder="+1 876 555 0123"
+												required
+												value={customerPhone}
+												onChange={(event) => setCustomerPhone(event.target.value)}
+											/>
+										</label>
+									</>
+								)}
 								<label className="grid gap-2 text-xs font-semibold text-slate-300">
 									Street address
 									<input
@@ -1229,11 +1785,17 @@ export default function App() {
 							</fieldset>
 
 							<label className="mb-4 grid gap-2 text-xs font-semibold text-slate-300">
-								{hasRepairs ? 'Device model for repair' : 'Custom notes / specifications'}
+								{hasRepairs
+									? cart.some((item) => item.id === 'camera-installation' || item.id === 'camera-troubleshooting')
+										? 'Camera system details / issue'
+										: 'Device model for repair'
+									: 'Custom notes / specifications'}
 								<input
 									className="h-11 rounded-lg border border-[#294572] bg-[#07142e] px-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-sky-400"
 									name="deviceModel"
-									placeholder={hasRepairs ? 'e.g. iPhone 13 Pro' : 'e.g. preferred color or storage'}
+									placeholder={cart.some((item) => item.id === 'camera-installation' || item.id === 'camera-troubleshooting')
+										? 'Camera brand, number of cameras, or issue to troubleshoot'
+										: hasRepairs ? 'e.g. iPhone 13 Pro' : 'e.g. preferred color or storage'}
 									required={hasRepairs}
 									value={deviceModel}
 									onChange={(event) => setDeviceModel(event.target.value)}
@@ -1247,7 +1809,7 @@ export default function App() {
 								type="submit"
 								disabled={cart.length === 0 || checkoutBusy}
 							>
-								<span>{checkoutBusy ? 'Processing…' : paymentMethod === 'wallet' ? 'Pay with wallet credit' : paymentMethod === 'payoneer' ? 'Request Payoneer payment link' : paymentMethod === 'wipay' ? 'Request WiPay payment instructions' : hasDevices && hasRepairs ? 'Send combined request' : hasDevices ? 'Enquire on WhatsApp' : 'Send repair request'}</span>
+								<span>{checkoutBusy ? 'Processing…' : paymentMethod === 'wallet' ? 'Pay with wallet credit' : paymentMethod === 'crypto' ? 'Submit for payment verification' : paymentMethod === 'payoneer' ? 'Request Payoneer payment link' : paymentMethod === 'wipay' ? 'Request WiPay payment instructions' : hasWholesale ? 'Send service request' : hasDevices && hasRepairs ? 'Send combined request' : hasDevices ? 'Enquire on WhatsApp' : 'Send repair request'}</span>
 								<ArrowIcon />
 							</button>
 							{checkoutNotice && (
@@ -1256,7 +1818,7 @@ export default function App() {
 								</p>
 							)}
 							<p className="mt-3 text-center text-[11px] text-slate-500">
-								{paymentMethod === 'wallet' ? 'Wallet orders are priced and charged securely on the server.' : paymentMethod === 'payoneer' ? 'A current Payoneer link will be provided after you send your order request.' : paymentMethod === 'wipay' ? 'Current WiPay payment instructions will be provided after you send your order request.' : 'No payment is collected here.'}
+								{paymentMethod === 'wallet' ? 'Wallet orders are priced and charged securely on the server.' : paymentMethod === 'crypto' ? 'Crypto orders remain pending until an administrator verifies the transaction.' : paymentMethod === 'payoneer' ? 'A current Payoneer link will be provided after you send your order request.' : paymentMethod === 'wipay' ? 'Current WiPay payment instructions will be provided after you send your order request.' : 'No payment is collected here.'}
 							</p>
 						</aside>
 					</div>
@@ -1316,6 +1878,18 @@ export default function App() {
 					EXCLUSIVE MOBILE SOLUTIONS <span className="px-2 text-sky-400">·</span> DEVICE CARE, DONE RIGHT
 				</footer>
 			</div>
+			<a
+				href={`https://wa.me/${whatsappNumber}?text=${encodeURIComponent('Hello, I have a question about your services.')}`}
+				target="_blank"
+				rel="noopener noreferrer"
+				className="fixed bottom-5 left-5 z-50 grid h-12 w-12 place-items-center rounded-full bg-emerald-500 text-white shadow-xl transition hover:scale-105 hover:bg-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:ring-offset-2 focus:ring-offset-[#050d22]"
+				aria-label="Chat with support on WhatsApp"
+				title="Chat with support on WhatsApp"
+			>
+				<svg aria-hidden="true" className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
+					<path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z" />
+				</svg>
+			</a>
 			<a
 				href="https://t.me/techfix_pro"
 				target="_blank"

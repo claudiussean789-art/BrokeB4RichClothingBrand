@@ -3,5 +3,11 @@ verify_jwt = true
 
 [functions.capture-paypal-topup]
 verify_jwt = true
+
+[functions.create-paypal-order-checkout]
+verify_jwt = true
+
+[functions.capture-paypal-order-checkout]
+verify_jwt = true
 [functions.confirm-manual-topup]
 verify_jwt = false

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 120" role="img" aria-label="Exclusive Mobile Solutions logo">
+  <defs>
+    <linearGradient id="g2" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#67e8f9"/>
+      <stop offset="100%" stop-color="#38bdf8"/>
+    </linearGradient>
+  </defs>
+  <rect width="520" height="120" rx="20" fill="#071b39"/>
+  <rect x="16" y="18" width="84" height="84" rx="18" fill="none" stroke="url(#g2)" stroke-width="6"/>
+  <path d="M34 82V38c0-5 4-9 9-9h13c5 0 9 4 9 9v15h-7V38H43v44H34Zm25 0V48h12c11 0 19 8 19 17s-8 19-19 19H59V82Zm7-7h5c6 0 11-5 11-12s-5-12-11-12h-5v24Z" fill="#e2f4ff"/>
+  <path d="M85 41h11v7H85zm0 12h11v7H85zm0 12h11v7H85z" fill="url(#g2)"/>
+  <text x="120" y="59" fill="#f8fbff" font-size="28" font-weight="700" font-family="Segoe UI, Arial, sans-serif" letter-spacing="1">EXCLUSIVE</text>
+  <text x="120" y="88" fill="#67e8f9" font-size="26" font-weight="700" font-family="Segoe UI, Arial, sans-serif" letter-spacing="1">MOBILE SOLUTIONS</text>
+</svg>
