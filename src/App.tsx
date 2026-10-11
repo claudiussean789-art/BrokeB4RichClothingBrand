@@ -1294,6 +1294,17 @@ export default function App() {
 									Chat with us on WhatsApp
 								</a>
 							</div>
+							<div>
+								<p className="text-xs font-semibold text-slate-300">Telegram</p>
+								<a
+									href="https://t.me/techfix_pro"
+									target="_blank"
+									rel="noopener noreferrer"
+									className="text-sm text-sky-400 transition hover:text-sky-300"
+								>
+									@techfix_pro
+								</a>
+							</div>
 						</div>
 					</div>
 				</section>
