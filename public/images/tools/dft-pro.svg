@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title">
+  <title id="title">DFT Pro</title>
+  <rect width="256" height="256" rx="32" fill="#07142e"/>
+  <circle cx="128" cy="110" r="68" fill="#112b4b" stroke="#f97316" stroke-width="8"/>
+  <path d="M89 149V71h34c26 0 43 15 43 39s-17 39-43 39zm27-22h7c11 0 17-6 17-17s-6-17-17-17h-7z" fill="#fb923c"/>
+  <text x="128" y="218" fill="#f8fafc" font-family="Arial,sans-serif" font-size="27" font-weight="800" text-anchor="middle" letter-spacing="2">DFT PRO</text>
+</svg>

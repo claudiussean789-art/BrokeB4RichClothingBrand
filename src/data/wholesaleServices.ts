@@ -7,6 +7,7 @@ export type WholesaleService = {
 	time: string;
 	status: 'INSTANT' | 'EXPRESS' | 'HOT' | 'NEW' | 'SPECIAL';
 	description: string;
+	logo?: string;
 	requestOnly?: boolean;
 };
 
@@ -20,6 +21,7 @@ export const wholesaleServices: WholesaleService[] = [
 		time: 'Request',
 		status: 'INSTANT',
 		description: 'Information check for supported Google Pixel devices. Requests are handled separately; the displayed per-check price is below the checkout minimum.',
+		logo: '/images/tools/google-pixel.svg',
 		requestOnly: true,
 	},
 	{
@@ -31,6 +33,7 @@ export const wholesaleServices: WholesaleService[] = [
 		time: 'Request processing',
 		status: 'EXPRESS',
 		description: 'Carrier unlock service for eligible Pixel devices, subject to carrier approval and device eligibility.',
+		logo: '/images/tools/google-pixel.svg',
 	},
 	{
 		id: 'pixel-service-tool-refill-credits',
@@ -41,6 +44,7 @@ export const wholesaleServices: WholesaleService[] = [
 		time: 'Digital',
 		status: 'INSTANT',
 		description: 'Refill credits for an existing Pixel Service Tool account. Use only with an account you own or are authorized to manage.',
+		logo: '/images/tools/google-pixel.svg',
 	},
 	{
 		id: 'gpixel-pro-credits-new-user',
@@ -51,6 +55,7 @@ export const wholesaleServices: WholesaleService[] = [
 		time: 'Digital',
 		status: 'NEW',
 		description: 'Credits for a new GPixel Pro account. Available services are subject to the tool provider’s terms and device authorization.',
+		logo: '/images/tools/gpixel-pro.svg',
 	},
 	{
 		id: 'gpixel-pro-credits-existing-user',
@@ -61,6 +66,7 @@ export const wholesaleServices: WholesaleService[] = [
 		time: 'Digital',
 		status: 'INSTANT',
 		description: 'Credits for an existing GPixel Pro account. Available services are subject to the tool provider’s terms and device authorization.',
+		logo: '/images/tools/gpixel-pro.svg',
 	},
 	{
 		id: 'iphone-18-pro-max-unlock',

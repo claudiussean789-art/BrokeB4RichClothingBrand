@@ -40,7 +40,9 @@ type CartItem = {
 type ServerCreditService = {
 	id: string;
 	name: string;
+	logo?: string;
 	selectionType: 'duration' | 'quantity' | 'request';
+	requestDescription?: string;
 	options?: string[];
 	products?: { id: string; name: string; description: string; price: number; icon: string; image: string; deliveryTime: string; summary: string; fullDescription: string; highlighted?: boolean }[];
 	targetLabel: string;
@@ -51,28 +53,46 @@ const serverCreditServices: ServerCreditService[] = [
 	{
 		id: 'eft-tool',
 		name: 'EFT Tool',
+		logo: '/images/tools/eft-pro.svg',
 		selectionType: 'duration',
 		requiresToolEmail: true,
 		products: [
-			{ id: 'eft-1-month', name: '1 Month Activation (30 Days)', description: 'EFT Tool Activation – Official Reseller', price: 20, icon: 'EFT', image: 'https://images.unsplash.com/photo-1616469829941-c7200edec809?w=600&auto=format&fit=crop&q=80', deliveryTime: '5–15 Minutes', summary: 'EFT Tool 1 Month / 30 Days account activation for supported GSM servicing operations. Check current device support before ordering.', fullDescription: 'Activate your EFT Tool account with the 1 Month Activation (30 Days) license for supported mobile servicing work.' },
-			{ id: 'eft-3-months', name: '3 Months Activation (90 Days)', description: 'EFT Tool Activation – Official Reseller', price: 18, icon: 'EFT', image: 'https://images.unsplash.com/photo-1616469829941-c7200edec809?w=600&auto=format&fit=crop&q=80', deliveryTime: '5–15 Minutes', summary: 'EFT Tool 3 Months / 90 Days account activation for supported GSM servicing operations. Check current device support before ordering.', fullDescription: 'Activate your EFT Tool account with the 3 Months Activation (90 Days) license for supported mobile servicing work.' },
-			{ id: 'eft-6-months', name: '6 Months Activation (180 Days)', description: 'EFT Tool Activation – Official Reseller', price: 27, icon: 'EFT', image: 'https://images.unsplash.com/photo-1616469829941-c7200edec809?w=600&auto=format&fit=crop&q=80', deliveryTime: '5–15 Minutes', summary: 'EFT Tool 6 Months / 180 Days account activation for supported GSM servicing operations. Check current device support before ordering.', fullDescription: 'Activate your EFT Tool account with the 6 Months Activation (180 Days) license for supported mobile servicing work.' },
-			{ id: 'eft-12-months', name: '12 Months Activation (360 Days)', description: 'EFT Tool Activation – Official Reseller', price: 45, icon: 'EFT', image: 'https://images.unsplash.com/photo-1616469829941-c7200edec809?w=600&auto=format&fit=crop&q=80', deliveryTime: '5–15 Minutes', summary: 'EFT Tool 12 Months / 360 Days account activation for supported GSM servicing operations. Check current device support before ordering.', fullDescription: 'Activate your EFT Tool account with the 12 Months Activation (360 Days) license for supported mobile servicing work.', highlighted: true },
+			{ id: 'eft-1-month', name: '1 Month Activation (30 Days)', description: 'EFT Tool Activation – Official Reseller', price: 20, icon: 'EFT', image: '/images/tools/eft-pro.svg', deliveryTime: '5–15 Minutes', summary: 'EFT Tool 1 Month / 30 Days account activation for supported GSM servicing operations. Check current device support before ordering.', fullDescription: 'Activate your EFT Tool account with the 1 Month Activation (30 Days) license for supported mobile servicing work.' },
+			{ id: 'eft-3-months', name: '3 Months Activation (90 Days)', description: 'EFT Tool Activation – Official Reseller', price: 18, icon: 'EFT', image: '/images/tools/eft-pro.svg', deliveryTime: '5–15 Minutes', summary: 'EFT Tool 3 Months / 90 Days account activation for supported GSM servicing operations. Check current device support before ordering.', fullDescription: 'Activate your EFT Tool account with the 3 Months Activation (90 Days) license for supported mobile servicing work.' },
+			{ id: 'eft-6-months', name: '6 Months Activation (180 Days)', description: 'EFT Tool Activation – Official Reseller', price: 27, icon: 'EFT', image: '/images/tools/eft-pro.svg', deliveryTime: '5–15 Minutes', summary: 'EFT Tool 6 Months / 180 Days account activation for supported GSM servicing operations. Check current device support before ordering.', fullDescription: 'Activate your EFT Tool account with the 6 Months Activation (180 Days) license for supported mobile servicing work.' },
+			{ id: 'eft-12-months', name: '12 Months Activation (360 Days)', description: 'EFT Tool Activation – Official Reseller', price: 45, icon: 'EFT', image: '/images/tools/eft-pro.svg', deliveryTime: '5–15 Minutes', summary: 'EFT Tool 12 Months / 360 Days account activation for supported GSM servicing operations. Check current device support before ordering.', fullDescription: 'Activate your EFT Tool account with the 12 Months Activation (360 Days) license for supported mobile servicing work.', highlighted: true },
 		],
 		targetLabel: 'Tool account email',
 	},
 	{
 		id: 'unlock-tool',
 		name: 'Unlock Tool',
+		logo: '/images/tools/unlocktool.svg',
 		selectionType: 'duration',
 		requiresToolEmail: true,
 		products: [
-			{ id: 'unlock-3-months', name: '3 Months Activation (90 Days)', description: 'UnlockTool Activation – Official Reseller', price: 18, icon: 'UT', image: 'https://images.unsplash.com/photo-1616469829941-c7200edec809?w=600&auto=format&fit=crop&q=80', deliveryTime: '5–15 Minutes', summary: 'UnlockTool 3 Months / 90 Days account activation for supported GSM servicing operations. Check current device support before ordering.', fullDescription: 'Activate your UnlockTool account with the 3 Months Activation (90 Days) license for supported mobile servicing work.' },
-			{ id: 'unlock-6-months', name: '6 Months Activation (180 Days)', description: 'UnlockTool Activation – Official Reseller', price: 27, icon: 'UT', image: 'https://images.unsplash.com/photo-1616469829941-c7200edec809?w=600&auto=format&fit=crop&q=80', deliveryTime: '5–15 Minutes', summary: 'UnlockTool 6 Months / 180 Days account activation for supported GSM servicing operations. Check current device support before ordering.', fullDescription: 'Activate your UnlockTool account with the 6 Months Activation (180 Days) license for supported mobile servicing work.' },
-			{ id: 'unlock-12-months', name: '12 Months Activation (360 Days)', description: 'UnlockTool Activation – Official Reseller', price: 45, icon: 'UT', image: 'https://images.unsplash.com/photo-1616469829941-c7200edec809?w=600&auto=format&fit=crop&q=80', deliveryTime: '5–15 Minutes', summary: 'UnlockTool 12 Months / 360 Days account activation for supported GSM servicing operations. Check current device support before ordering.', fullDescription: 'Activate your UnlockTool account with the 12 Months Activation (360 Days) license for supported mobile servicing work.', highlighted: true },
-			{ id: 'unlock-rent-6-hours', name: 'Rent [6 Hours] – Instant Auto API', description: 'All GSM Tools Rent Service – Instant Auto API', price: 1.2, icon: 'RENT', image: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=600&auto=format&fit=crop&q=80', deliveryTime: 'Instant', summary: 'UnlockTool 6 Hours rent service with instant auto API distribution.', fullDescription: 'Temporary six-hour access to UnlockTool for quick servicing jobs.' },
+			{ id: 'unlock-3-months', name: '3 Months Activation (90 Days)', description: 'UnlockTool Activation – Official Reseller', price: 18, icon: 'UT', image: '/images/tools/unlocktool.svg', deliveryTime: '5–15 Minutes', summary: 'UnlockTool 3 Months / 90 Days account activation for supported GSM servicing operations. Check current device support before ordering.', fullDescription: 'Activate your UnlockTool account with the 3 Months Activation (90 Days) license for supported mobile servicing work.' },
+			{ id: 'unlock-6-months', name: '6 Months Activation (180 Days)', description: 'UnlockTool Activation – Official Reseller', price: 27, icon: 'UT', image: '/images/tools/unlocktool.svg', deliveryTime: '5–15 Minutes', summary: 'UnlockTool 6 Months / 180 Days account activation for supported GSM servicing operations. Check current device support before ordering.', fullDescription: 'Activate your UnlockTool account with the 6 Months Activation (180 Days) license for supported mobile servicing work.' },
+			{ id: 'unlock-12-months', name: '12 Months Activation (360 Days)', description: 'UnlockTool Activation – Official Reseller', price: 45, icon: 'UT', image: '/images/tools/unlocktool.svg', deliveryTime: '5–15 Minutes', summary: 'UnlockTool 12 Months / 360 Days account activation for supported GSM servicing operations. Check current device support before ordering.', fullDescription: 'Activate your UnlockTool account with the 12 Months Activation (360 Days) license for supported mobile servicing work.', highlighted: true },
+			{ id: 'unlock-rent-6-hours', name: 'Rent [6 Hours] – Instant Auto API', description: 'All GSM Tools Rent Service – Instant Auto API', price: 1.2, icon: 'RENT', image: '/images/tools/unlocktool.svg', deliveryTime: 'Instant', summary: 'UnlockTool 6 Hours rent service with instant auto API distribution.', fullDescription: 'Temporary six-hour access to UnlockTool for quick servicing jobs.' },
 		],
 		targetLabel: 'Tool account email',
+	},
+	{
+		id: 'dft-pro',
+		name: 'DFT Pro',
+		logo: '/images/tools/dft-pro.svg',
+		selectionType: 'request',
+		requestDescription: 'Submit a DFT Pro service request. The team will confirm supported services and pricing.',
+		targetLabel: 'Device model / service details',
+	},
+	{
+		id: 'global-unlocker-pro',
+		name: 'Global Unlocker Pro',
+		logo: '/images/tools/global-unlocker-pro.svg',
+		selectionType: 'request',
+		requestDescription: 'Submit a Global Unlocker Pro service request. The team will confirm supported services and pricing.',
+		targetLabel: 'Device model / service details',
 	},
 	{ id: 'samkey', name: 'Samkey Server Credits', selectionType: 'quantity', targetLabel: 'Device serial / username / account email' },
 	{ id: 'samtmo', name: 'SamTMO', selectionType: 'quantity', targetLabel: 'Device serial / username / account email' },
@@ -1150,6 +1170,11 @@ export default function App() {
 										<div className="grid gap-3 sm:grid-cols-2" aria-live="polite">
 											{filteredWholesaleServices.map((service) => (
 												<article className="flex min-w-0 flex-col rounded-xl border border-[#294572] bg-[#07142e] p-4 transition hover:border-sky-500/60" key={service.id}>
+													{service.logo && (
+														<div className="mb-3 flex h-20 items-center justify-center rounded-lg border border-[#16466d] bg-[#050d22] p-2">
+															<img src={service.logo} alt={`${service.title} logo`} className="h-full w-full object-contain" loading="lazy" />
+														</div>
+													)}
 													<div className="mb-2 flex items-center justify-between gap-3">
 														<span className={`rounded px-2 py-1 text-[9px] font-extrabold tracking-wide ${service.status === 'INSTANT' ? 'bg-emerald-400/15 text-emerald-200' : service.status === 'EXPRESS' ? 'bg-sky-400/15 text-sky-200' : service.status === 'HOT' ? 'bg-amber-400/15 text-amber-200' : service.status === 'SPECIAL' ? 'bg-rose-400/15 text-rose-200' : 'bg-violet-400/15 text-violet-200'}`}>
 															{service.status}
@@ -1342,9 +1367,13 @@ export default function App() {
 										return (
 											<article className="rounded-xl border border-[#243f70] bg-[#091835] p-4" key={service.id}>
 												<div className="mb-4 flex items-center gap-3">
-													<span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-[#16466d] bg-[#0a1d3a] text-xs font-bold tracking-wide text-sky-300" aria-hidden="true">
-														{service.name.split(' ').map((word) => word[0]).join('').slice(0, 3).toUpperCase()}
-													</span>
+													{service.logo ? (
+														<img src={service.logo} alt={`${service.name} logo`} className="h-12 w-12 shrink-0 rounded-lg border border-[#16466d] bg-[#07142e] p-1 object-contain" />
+													) : (
+														<span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-[#16466d] bg-[#0a1d3a] text-xs font-bold tracking-wide text-sky-300" aria-hidden="true">
+															{service.name.split(' ').map((word) => word[0]).join('').slice(0, 3).toUpperCase()}
+														</span>
+													)}
 													<h3 className="font-semibold text-slate-100">{service.name}</h3>
 												</div>
 												<div className="grid grid-cols-1 gap-3">
@@ -1359,7 +1388,7 @@ export default function App() {
 																	<span aria-hidden="true">←</span> Back to Products
 																</button>
 																<div className="relative overflow-hidden bg-black">
-																	<img src={selectedProduct.image} alt={selectedProduct.name} className="mx-auto max-h-80 w-full object-cover" loading="lazy" />
+																	<img src={selectedProduct.image} alt={`${service.name} logo`} className="mx-auto h-56 w-full bg-[#07142e] p-5 object-contain sm:h-72" loading="lazy" />
 																</div>
 																<div className="grid gap-4 p-4">
 																	<div className="flex items-start justify-between gap-3">
@@ -1423,7 +1452,7 @@ export default function App() {
 																		key={product.id}
 																		onClick={() => setCreditSelections((current) => ({ ...current, [service.id]: product.id }))}
 																	>
-																		<img src={product.image} alt="" className="h-16 w-16 shrink-0 rounded-lg object-cover" loading="lazy" />
+																		<img src={product.image} alt={`${service.name} logo`} className="h-16 w-16 shrink-0 rounded-lg border border-[#16466d] bg-[#07142e] p-1 object-contain" loading="lazy" />
 																		<span className="min-w-0 flex-1">
 																			<span className="block truncate text-sm font-bold text-white">{product.name}</span>
 																			<span className="my-0.5 block truncate text-xs text-slate-400">{product.description}</span>
@@ -1461,7 +1490,7 @@ export default function App() {
 														</label>
 													) : (
 														<p className="rounded-lg border border-[#294572] bg-[#07142e] px-3 py-2.5 text-sm text-slate-400">
-															Add an EFT Tool license request. The team will confirm the available license and price.
+															{service.requestDescription ?? 'Submit a service request. The team will confirm availability and pricing.'}
 														</p>
 													)}
 													{!service.products && (

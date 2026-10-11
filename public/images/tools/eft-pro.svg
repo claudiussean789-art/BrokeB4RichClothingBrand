@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title">
+  <title id="title">EFT Pro</title>
+  <rect width="256" height="256" rx="32" fill="#07142e"/>
+  <path d="M128 28 210 75v94l-82 47-82-47V75z" fill="#102746" stroke="#22c55e" stroke-width="8"/>
+  <path d="M139 56 91 132h35l-9 56 48-79h-35z" fill="#a3e635"/>
+  <text x="128" y="239" fill="#f8fafc" font-family="Arial,sans-serif" font-size="22" font-weight="700" text-anchor="middle" letter-spacing="2">EFT PRO</text>
+</svg>
