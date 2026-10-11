@@ -1300,9 +1300,12 @@ export default function App() {
 									href="https://t.me/techfix_pro"
 									target="_blank"
 									rel="noopener noreferrer"
-									className="text-sm text-sky-400 transition hover:text-sky-300"
+									className="mt-2 inline-flex items-center gap-2 rounded-lg bg-[#229ED9] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#1b85b8] focus:outline-none focus:ring-2 focus:ring-sky-300"
 								>
-									@techfix_pro
+									<svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.7">
+										<path strokeLinecap="round" strokeLinejoin="round" d="M21.8 4.2 18.5 20c-.2 1.1-.9 1.4-1.8.9l-5-3.7-2.4 2.3c-.3.3-.5.5-1 .5l.4-5.1 9.3-8.4c.4-.4-.1-.6-.6-.2L6 13.5l-5-1.6c-1.1-.3-1.1-1.1.2-1.6L20.7 3c.9-.3 1.6.2 1.1 1.2Z" />
+									</svg>
+									Chat with us on Telegram
 								</a>
 							</div>
 						</div>
@@ -1313,6 +1316,18 @@ export default function App() {
 					EXCLUSIVE MOBILE SOLUTIONS <span className="px-2 text-sky-400">·</span> DEVICE CARE, DONE RIGHT
 				</footer>
 			</div>
+			<a
+				href="https://t.me/techfix_pro"
+				target="_blank"
+				rel="noopener noreferrer"
+				className="fixed bottom-5 right-5 z-50 grid h-14 w-14 place-items-center rounded-full bg-[#229ED9] text-white shadow-xl transition hover:scale-105 hover:bg-[#1b85b8] focus:outline-none focus:ring-2 focus:ring-sky-300 focus:ring-offset-2 focus:ring-offset-[#050d22]"
+				aria-label="Chat with support on Telegram"
+				title="Chat with support on Telegram"
+			>
+				<svg aria-hidden="true" className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
+					<path d="M21.8 4.2 18.5 20c-.2 1.1-.9 1.4-1.8.9l-5-3.7-2.4 2.3c-.3.3-.5.5-1 .5l.4-5.1 9.3-8.4c.4-.4-.1-.6-.6-.2L6 13.5l-5-1.6c-1.1-.3-1.1-1.1.2-1.6L20.7 3c.9-.3 1.6.2 1.1 1.2Z" />
+				</svg>
+			</a>
 		</main>
 		);
 }
