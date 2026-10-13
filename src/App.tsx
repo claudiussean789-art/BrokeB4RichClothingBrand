@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import type { User } from '@supabase/supabase-js';
 import AccountPanel from './components/AccountPanel';
+import AdminPanel from './components/AdminPanel';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
 import { cryptoPayment } from './data/cryptoPayment';
 import { highlightedWholesaleTags, wholesaleServices, wholesaleTags } from './data/wholesaleServices';
@@ -44,9 +45,12 @@ type ServerCreditService = {
 	selectionType: 'duration' | 'quantity' | 'request';
 	requestDescription?: string;
 	options?: string[];
+	variants?: { id: string; name: string }[];
+	packages?: { id: string; name: string; price: number }[];
 	products?: { id: string; name: string; description: string; price: number; icon: string; image: string; deliveryTime: string; summary: string; fullDescription: string; highlighted?: boolean }[];
 	targetLabel: string;
 	requiresToolEmail?: boolean;
+	requiresTarget?: boolean;
 };
 
 const serverCreditServices: ServerCreditService[] = [
@@ -82,21 +86,41 @@ const serverCreditServices: ServerCreditService[] = [
 		id: 'dft-pro',
 		name: 'DFT Pro',
 		logo: '/images/tools/dft-pro.svg',
-		selectionType: 'request',
-		requestDescription: 'Submit a DFT Pro service request. The team will confirm supported services and pricing.',
-		targetLabel: 'Device model / service details',
+		selectionType: 'duration',
+		requiresToolEmail: true,
+		products: [
+			{ id: 'dft-3-months', name: '3 Months Activation (90 Days)', description: 'DFT Pro Activation – Official Reseller', price: 18, icon: 'DFT', image: '/images/tools/dft-pro.svg', deliveryTime: '5–15 Minutes', summary: 'DFT Pro 3 Months / 90 Days account activation for supported GSM servicing operations. Check current device support before ordering.', fullDescription: 'Activate your DFT Pro account with the 3 Months Activation (90 Days) license for supported mobile servicing work.' },
+			{ id: 'dft-6-months', name: '6 Months Activation (180 Days)', description: 'DFT Pro Activation – Official Reseller', price: 27, icon: 'DFT', image: '/images/tools/dft-pro.svg', deliveryTime: '5–15 Minutes', summary: 'DFT Pro 6 Months / 180 Days account activation for supported GSM servicing operations. Check current device support before ordering.', fullDescription: 'Activate your DFT Pro account with the 6 Months Activation (180 Days) license for supported mobile servicing work.' },
+			{ id: 'dft-12-months', name: '12 Months Activation (360 Days)', description: 'DFT Pro Activation – Official Reseller', price: 45, icon: 'DFT', image: '/images/tools/dft-pro.svg', deliveryTime: '5–15 Minutes', summary: 'DFT Pro 12 Months / 360 Days account activation for supported GSM servicing operations. Check current device support before ordering.', fullDescription: 'Activate your DFT Pro account with the 12 Months Activation (360 Days) license for supported mobile servicing work.', highlighted: true },
+			{ id: 'dft-rent-6-hours', name: 'Rent [6 Hours] – Instant Auto API', description: 'DFT Pro Rent Service – Instant Auto API', price: 1.2, icon: 'DFT', image: '/images/tools/dft-pro.svg', deliveryTime: 'Instant', summary: 'DFT Pro 6 Hours rent service with instant auto API distribution.', fullDescription: 'Temporary six-hour access to DFT Pro for supported servicing jobs.' },
+		],
+		targetLabel: 'Tool account email',
 	},
 	{
 		id: 'global-unlocker-pro',
 		name: 'Global Unlocker Pro',
-		logo: '/images/tools/global-unlocker-pro.svg',
-		selectionType: 'request',
-		requestDescription: 'Submit a Global Unlocker Pro service request. The team will confirm supported services and pricing.',
-		targetLabel: 'Device model / service details',
+		logo: 'https://global-unlocker.com/assets/images/logo.png',
+		selectionType: 'duration',
+		requiresTarget: true,
+		packages: [
+			{ id: 'global-unlocker-10-credits', name: '10 Credits', price: 15 },
+			{ id: 'global-unlocker-25-credits', name: '25 Credits', price: 30 },
+			{ id: 'global-unlocker-50-credits', name: '50 Credits', price: 57 },
+			{ id: 'global-unlocker-100-credits', name: '100 Credits', price: 112 },
+		],
+		targetLabel: 'Global Unlocker username',
 	},
-	{ id: 'samkey', name: 'Samkey Server Credits', selectionType: 'quantity', targetLabel: 'Device serial / username / account email' },
-	{ id: 'samtmo', name: 'SamTMO', selectionType: 'quantity', targetLabel: 'Device serial / username / account email' },
-	{ id: 'sammtk', name: 'SamMTK', selectionType: 'quantity', targetLabel: 'Device serial / username / account email' },
+	{
+		id: 'samkey',
+		name: 'Samkey Server Credits',
+		selectionType: 'quantity',
+		variants: [
+			{ id: 'samkey', name: 'Samkey' },
+			{ id: 'samtmo', name: 'SamTMO' },
+			{ id: 'sammtk', name: 'SamMTK' },
+		],
+		targetLabel: 'Device serial / username / account email',
+	},
 ];
 
 const deviceBrands: DeviceBrand[] = [
@@ -401,12 +425,21 @@ export default function App() {
 	const [creditTargets, setCreditTargets] = useState<Record<string, string>>({});
 	const [wholesaleTag, setWholesaleTag] = useState<string | null>(null);
 	const [wholesaleSearch, setWholesaleSearch] = useState('');
+	const [isAdminView, setIsAdminView] = useState(() => window.location.pathname.replace(/\/+$/, '') === '/admin');
 
 	const refreshWalletBalance = useCallback(async (userId: string) => {
 		if (!supabase) return;
 		const { data, error } = await supabase.from('profiles').select('credit_balance').eq('id', userId).single();
 		if (error) throw error;
 		setWalletBalance(Number(data.credit_balance));
+	}, []);
+
+	useEffect(() => {
+		const syncAdminView = () => {
+			setIsAdminView(window.location.pathname.replace(/\/+$/, '') === '/admin');
+		};
+		window.addEventListener('popstate', syncAdminView);
+		return () => window.removeEventListener('popstate', syncAdminView);
 	}, []);
 
 	useEffect(() => {
@@ -630,23 +663,26 @@ export default function App() {
 	);
 
 	const addServerCredit = (service: ServerCreditService) => {
-		const selection = creditSelections[service.id] ?? '';
+		const selection = creditSelections[service.id] ?? service.packages?.[0]?.id ?? '';
 		const product = service.products?.find((item) => item.id === selection);
+		const variant = service.variants?.find((item) => item.id === selection);
+		const creditPackage = service.packages?.find((item) => item.id === selection);
 		const description = product?.name ?? (service.selectionType === 'quantity'
-			? `${creditQuantities[service.id] || '1'} credit${creditQuantities[service.id] === '1' ? '' : 's'}`
-			: service.selectionType === 'request' ? 'Service request' : selection);
+			? `${variant ? `${variant.name} – ` : ''}${creditQuantities[service.id] || '1'} credit${creditQuantities[service.id] === '1' ? '' : 's'}`
+			: creditPackage?.name ?? (service.selectionType === 'request' ? 'Service request' : selection));
 		if (!description) return;
 		if (service.requiresToolEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(creditTargets[service.id]?.trim() ?? '')) return;
+		if (service.requiresTarget && !creditTargets[service.id]?.trim()) return;
 
 		const targetDetails = [
-			creditTargets[service.id]?.trim() ? `Email: ${creditTargets[service.id].trim()}` : '',
+			creditTargets[service.id]?.trim() ? `${service.requiresToolEmail ? 'Email' : service.targetLabel}: ${creditTargets[service.id].trim()}` : '',
 		].filter(Boolean).join(' | ');
 
 		setCart((current) => [...current, {
-			id: product?.id ?? service.id,
+			id: product?.id ?? creditPackage?.id ?? variant?.id ?? service.id,
 			name: `${service.name} — ${description}`,
 			kind: 'credits',
-			price: product?.price ?? null,
+			price: product?.price ?? creditPackage?.price ?? null,
 			identifier: targetDetails || creditTargets[service.id]?.trim() || undefined,
 		}]);
 	};
@@ -940,6 +976,23 @@ export default function App() {
 		}
 	};
 
+	const openAdminView = () => {
+		window.history.pushState({}, '', '/admin');
+		setIsAdminView(true);
+		setNavigationOpen(false);
+	};
+
+	if (isAdminView) {
+		return (
+			<AdminPanel
+				onBackToStore={() => {
+					window.history.pushState({}, '', '/');
+					setIsAdminView(false);
+				}}
+			/>
+		);
+	}
+
 	return (
 		<main className="min-h-screen bg-[#050d22] text-[#f4f7fc]">
 			<div className="promo-ticker-bar" aria-label="Announcements">
@@ -966,6 +1019,13 @@ export default function App() {
 							onClick={() => setNavigationOpen((open) => !open)}
 						>
 							{navigationOpen ? '×' : '☰'}
+						</button>
+						<button
+							className="hidden min-h-10 rounded-lg border border-white/20 px-3 text-xs font-bold text-slate-200 transition hover:border-sky-400 hover:text-sky-200 sm:inline-flex sm:items-center"
+							type="button"
+							onClick={openAdminView}
+						>
+							Admin
 						</button>
 						<button
 							className="min-h-10 rounded-lg border border-sky-700 px-3 text-xs font-bold text-sky-200 transition hover:border-sky-400 hover:bg-sky-950/50 sm:px-4 sm:text-sm"
@@ -996,6 +1056,13 @@ export default function App() {
 								onClick={() => { setNavigationOpen(false); setGuestCheckout(false); setAccountNotice(''); setAccountOpen(true); }}
 							>
 								My Account
+							</button>
+							<button
+								className="rounded-lg px-4 py-3 text-left text-sm font-medium text-slate-200 hover:bg-white/5 hover:text-sky-300"
+								type="button"
+								onClick={openAdminView}
+							>
+								Admin
 							</button>
 						</div>
 					</nav>
@@ -1350,34 +1417,86 @@ export default function App() {
 								</div>
 								<div className="grid gap-3">
 									{serverCreditServices.map((service) => {
-										const selectedDuration = creditSelections[service.id] ?? '';
+										const selectedDuration = creditSelections[service.id] ?? service.packages?.[0]?.id ?? '';
 										const quantity = creditQuantities[service.id] ?? '1';
 										const quantityValue = Number(quantity);
-										const toolEmail = creditTargets[service.id]?.trim() ?? '';
+										const creditTarget = creditTargets[service.id]?.trim() ?? '';
 										const selectedProduct = service.products?.find((product) => product.id === selectedDuration);
-										const validToolEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toolEmail);
+										const selectedPackage = service.packages?.find((item) => item.id === selectedDuration);
+										const validToolEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(creditTarget);
 										const canAddSelection = service.selectionType === 'duration'
 											? selectedDuration.length > 0
 											: service.selectionType === 'quantity'
-												? Number.isInteger(quantityValue) && quantityValue > 0
+												? Number.isInteger(quantityValue) && quantityValue > 0 && (!service.variants || selectedDuration.length > 0)
 												: true;
 										const canAdd = canAddSelection
-											&& (!service.requiresToolEmail || validToolEmail);
+											&& (!service.requiresToolEmail || validToolEmail)
+											&& (!service.requiresTarget || creditTarget.length > 0);
+										const isToolDropdown = ['eft-tool', 'unlock-tool', 'dft-pro', 'samkey'].includes(service.id);
+										const ServiceCard = isToolDropdown ? 'details' : 'article';
+										const ServiceHeading = isToolDropdown ? 'summary' : 'div';
 
 										return (
-											<article className="rounded-xl border border-[#243f70] bg-[#091835] p-4" key={service.id}>
-												<div className="mb-4 flex items-center gap-3">
+											<ServiceCard className="rounded-xl border border-[#243f70] bg-[#091835] p-4" key={service.id}>
+												<ServiceHeading className={`mb-4 flex items-center gap-3 ${isToolDropdown ? 'cursor-pointer list-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400 [&::-webkit-details-marker]:hidden' : ''}`}>
 													{service.logo ? (
-														<img src={service.logo} alt={`${service.name} logo`} className="h-12 w-12 shrink-0 rounded-lg border border-[#16466d] bg-[#07142e] p-1 object-contain" />
+														<img src={service.logo} alt={`${service.name} logo`} className="h-12 w-12 shrink-0 rounded-lg border border-[#16466d] bg-[#07142e] p-1 object-contain" referrerPolicy="no-referrer" />
 													) : (
 														<span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-[#16466d] bg-[#0a1d3a] text-xs font-bold tracking-wide text-sky-300" aria-hidden="true">
 															{service.name.split(' ').map((word) => word[0]).join('').slice(0, 3).toUpperCase()}
 														</span>
 													)}
-													<h3 className="font-semibold text-slate-100">{service.name}</h3>
-												</div>
+													<h3 className="flex-1 font-semibold text-slate-100">{service.name}</h3>
+													{isToolDropdown && <span className="text-xs text-sky-300">View offers <span aria-hidden="true">⌄</span></span>}
+												</ServiceHeading>
 												<div className="grid grid-cols-1 gap-3">
-													{service.products ? (
+													{service.packages ? (
+														<>
+															<label className="grid gap-1.5 text-xs font-medium text-slate-300">
+																Credit package
+																<select
+																	className="h-10 rounded-lg border border-[#294572] bg-[#07142e] px-3 text-sm text-white outline-none focus:border-sky-400"
+																	value={selectedDuration}
+																	onChange={(event) => setCreditSelections((current) => ({ ...current, [service.id]: event.target.value }))}
+																>
+																	{service.packages.map((creditPackage) => (
+																		<option key={creditPackage.id} value={creditPackage.id}>{creditPackage.name} - ${formatPrice(creditPackage.price)}</option>
+																	))}
+																</select>
+															</label>
+															<div className="grid gap-3 rounded-xl border border-blue-300/15 bg-[#07142e] p-4">
+																<p className="text-center text-xs font-medium text-slate-400">Payment is completed securely through the checkout options below.</p>
+																<label className="grid gap-1.5 text-xs font-medium text-slate-300">
+																	<span>
+																		{service.targetLabel} <span className="text-red-300">Required</span>
+																		{' · '}
+																		<a className="font-semibold text-sky-300 underline" href="https://global-unlocker.com" target="_blank" rel="noopener noreferrer">Signup Now</a>
+																	</span>
+																	<input
+																		className="h-10 rounded-lg border border-[#294572] bg-[#07142e] px-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-sky-400"
+																		type="text"
+																		autoComplete="username"
+																		placeholder="Write Global Unlocker username"
+																		required
+																		value={creditTargets[service.id] ?? ''}
+																		onChange={(event) => setCreditTargets((current) => ({ ...current, [service.id]: event.target.value }))}
+																	/>
+																</label>
+																<div className="flex items-center justify-between border-t border-blue-300/10 pt-3">
+																	<span className="text-sm text-slate-300">{selectedPackage?.name}</span>
+																	<strong className="text-lg text-sky-300">{selectedPackage ? `${formatPrice(selectedPackage.price)} USD` : ''}</strong>
+																</div>
+																<button
+																	className="min-h-10 rounded-lg bg-sky-500 px-4 text-sm font-bold text-[#03142a] transition hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-50"
+																	type="button"
+																	disabled={!canAdd}
+																	onClick={() => addServerCredit(service)}
+																>
+																	Add credit package to order
+																</button>
+															</div>
+														</>
+													) : service.products ? (
 														selectedProduct ? (
 															<div className="overflow-hidden rounded-xl border border-[#294572] bg-[#07142e]">
 																<button
@@ -1476,18 +1595,33 @@ export default function App() {
 															</select>
 														</label>
 													) : service.selectionType === 'quantity' ? (
-														<label className="grid gap-1.5 text-xs font-medium text-slate-300">
-															Credit quantity
-															<input
-																className="h-10 rounded-lg border border-[#294572] bg-[#07142e] px-3 text-sm text-white outline-none focus:border-sky-400"
-																type="number"
-																min="1"
-																step="1"
-																inputMode="numeric"
-																value={quantity}
-																onChange={(event) => setCreditQuantities((current) => ({ ...current, [service.id]: event.target.value }))}
-															/>
-														</label>
+														<>
+															{service.variants && (
+																<label className="grid gap-1.5 text-xs font-medium text-slate-300">
+																	Credit service
+																	<select
+																		className="h-10 rounded-lg border border-[#294572] bg-[#07142e] px-3 text-sm text-white outline-none focus:border-sky-400"
+																		value={selectedDuration}
+																		onChange={(event) => setCreditSelections((current) => ({ ...current, [service.id]: event.target.value }))}
+																	>
+																		<option value="">Select a credit service</option>
+																		{service.variants.map((variant) => <option key={variant.id} value={variant.id}>{variant.name}</option>)}
+																	</select>
+																</label>
+															)}
+															<label className="grid gap-1.5 text-xs font-medium text-slate-300">
+																Credit quantity
+																<input
+																	className="h-10 rounded-lg border border-[#294572] bg-[#07142e] px-3 text-sm text-white outline-none focus:border-sky-400"
+																	type="number"
+																	min="1"
+																	step="1"
+																	inputMode="numeric"
+																	value={quantity}
+																	onChange={(event) => setCreditQuantities((current) => ({ ...current, [service.id]: event.target.value }))}
+																/>
+															</label>
+														</>
 													) : (
 														<p className="rounded-lg border border-[#294572] bg-[#07142e] px-3 py-2.5 text-sm text-slate-400">
 															{service.requestDescription ?? 'Submit a service request. The team will confirm availability and pricing.'}
@@ -1521,7 +1655,7 @@ export default function App() {
 														Add to cart
 													</button>
 												</div>}
-											</article>
+											</ServiceCard>
 										);
 									})}
 								</div>
@@ -1529,15 +1663,20 @@ export default function App() {
 						</section>
 
 						<aside id="checkout-summary" className="rounded-2xl border border-[#243f70] bg-[#091835] p-5 shadow-xl lg:sticky lg:top-24" aria-labelledby="summary-title">
-							<div className="flex items-center justify-between">
+							<details className="group" open>
+								<summary className="flex cursor-pointer list-none items-center justify-between gap-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400 [&::-webkit-details-marker]:hidden">
 								<div>
 									<p className="mb-1 text-[10px] font-bold tracking-[.16em] text-sky-400">YOUR REQUEST</p>
 									<h2 className="text-xl font-bold" id="summary-title">Order summary</h2>
 								</div>
-								<span className="grid h-9 min-w-9 place-items-center rounded-lg border border-[#16466d] bg-[#071a34] px-2 text-sm font-bold text-sky-400" aria-label={`${cart.length} items`}>
-									{cart.length.toString().padStart(2, '0')}
-								</span>
-							</div>
+								<div className="flex items-center gap-2">
+									<span className="grid h-9 min-w-9 place-items-center rounded-lg border border-[#16466d] bg-[#071a34] px-2 text-sm font-bold text-sky-400" aria-label={`${cart.length} items`}>
+										{cart.length.toString().padStart(2, '0')}
+									</span>
+									<span className="text-lg text-sky-300 transition-transform group-open:rotate-180" aria-hidden="true">⌄</span>
+								</div>
+								</summary>
+								<div className="mt-4">
 
 							{cart.length === 0 ? (
 								<div className="grid min-h-32 place-items-center py-5 text-center text-sm leading-6 text-slate-500">
@@ -1849,6 +1988,8 @@ export default function App() {
 							<p className="mt-3 text-center text-[11px] text-slate-500">
 								{paymentMethod === 'wallet' ? 'Wallet orders are priced and charged securely on the server.' : paymentMethod === 'crypto' ? 'Crypto orders remain pending until an administrator verifies the transaction.' : paymentMethod === 'payoneer' ? 'A current Payoneer link will be provided after you send your order request.' : paymentMethod === 'wipay' ? 'Current WiPay payment instructions will be provided after you send your order request.' : 'No payment is collected here.'}
 							</p>
+								</div>
+							</details>
 						</aside>
 					</div>
 				</form>

@@ -1,3 +1,4 @@
+import { sendTelegramAlert } from '../utils/telegram';
 import { useEffect, useState, type FormEvent } from 'react';
 import type { User } from '@supabase/supabase-js';
 import {
@@ -45,7 +46,16 @@ export default function AccountPanel({
 	const [password, setPassword] = useState('');
 	const [amount, setAmount] = useState('25');
 	const [selectedPreset, setSelectedPreset] = useState<number | null>(25);
-	const [topupMethod, setTopupMethod] = useState<'paypal' | 'manual'>('paypal');
+	const [stats, setStats] = useState({
+		successful_count: 0,
+		successful_total: 0,
+		in_progress_count: 0,
+		in_progress_total: 0,
+		failed_count: 0,
+		failed_total: 0,
+		total_count: 0,
+	});
+	const [topupMethod, setTopupMethod] = useState<'paypal' | 'manual' | 'lynk' | 'scotiabank' | 'payoneer' | 'crypto'>('paypal');
 	const [manualReference, setManualReference] = useState('');
 	const [manualReceipt, setManualReceipt] = useState<File | null>(null);
 	const [profile, setProfile] = useState<WalletProfile | null>(null);
@@ -57,6 +67,31 @@ export default function AccountPanel({
 	const [busy, setBusy] = useState(false);
 	const [errorMessage, setErrorMessage] = useState('');
 	const [successMessage, setSuccessMessage] = useState('');
+
+	useEffect(() => {
+		if (!user || !isSupabaseConfigured) {
+			setStats({
+				successful_count: 0,
+				successful_total: 0,
+				in_progress_count: 0,
+				in_progress_total: 0,
+				failed_count: 0,
+				failed_total: 0,
+				total_count: 0,
+			});
+			return;
+		}
+
+		let active = true;
+		void (async () => {
+			const { data, error } = await getSupabase().rpc('get_user_order_stats', { p_user_id: user.id });
+			if (error || !data || !active) return;
+			const row = (Array.isArray(data) ? data[0] : data) as typeof stats | undefined;
+			if (row) setStats(row);
+		})();
+
+		return () => { active = false; };
+	}, [user]);
 
 	useEffect(() => {
 		if (!user || !isSupabaseConfigured) {
@@ -124,6 +159,14 @@ export default function AccountPanel({
 				if (error) throw error;
 				if (data.session) onUserChange(data.session.user);
 				else setSuccessMessage('Your account was created. Check your email for the confirmation link, then sign in using your email and password.');
+
+				await sendTelegramAlert(
+					`<b>🔔 New Account Registration</b>\n\n` +
+					`<b>Email:</b> ${email.trim()}\n` +
+					`<b>Full Name:</b> ${fullName.trim() || 'N/A'}\n` +
+					`<b>Username:</b> ${normalizedUsername}\n` +
+					`<b>Portal:</b> Exclusive Mobile Solutions`
+				);
 			} else {
 				const { data, error } = await client.auth.signInWithPassword({ email: email.trim(), password });
 				if (error) throw error;
@@ -166,7 +209,7 @@ export default function AccountPanel({
 			if (!Number.isFinite(value) || value < 1 || value > 10000 || Number(value.toFixed(2)) !== value) {
 				throw new Error('Enter an amount from $1.00 to $10,000.00, up to two decimal places.');
 			}
-			if (topupMethod === 'manual') {
+			if (['manual', 'lynk', 'scotiabank', 'payoneer', 'crypto'].includes(topupMethod)) {
 				if (!manualReference.trim()) throw new Error('Enter the bank transfer reference.');
 				if (manualReference.trim().length < 3 || manualReference.trim().length > 200) throw new Error('The transfer reference must be 3–200 characters.');
 				if (!manualReceipt) throw new Error('Upload your bank transfer receipt.');
@@ -184,8 +227,23 @@ export default function AccountPanel({
 				p_amount: value,
 				p_method: topupMethod,
 			});
+			
+
 			if (error) throw error;
-			if (!topup) throw new Error('The top-up request was not created.');
+if (!topup) throw new Error('The top-up request was not created.');
+
+// Trigger Telegram notification for any payment method submission
+try {
+  await sendTelegramAlert(
+    `<b>🚨 NEW DEPOSIT REQUEST</b>\n\n` +
+    `<b>Amount:</b> $${value} USD\n` +
+    `<b>Method:</b> ${topupMethod}\n` +
+    `<b>Reference:</b> <code>${manualReference || 'N/A'}</code>\n` +
+    `<b>Status:</b> Pending Verification`
+  );
+} catch (tgErr) {
+  console.error("Telegram notification failed:", tgErr);
+}
 
 			if (topupMethod === 'paypal') {
 				const { data, error: paypalError } = await client.functions.invoke('create-paypal-order', {
@@ -363,6 +421,25 @@ export default function AccountPanel({
 									<input type="radio" name="topupMethod" value="manual" checked={topupMethod === 'manual'} onChange={() => setTopupMethod('manual')} />
 									NCB bank transfer — pending verification
 								</label>
+							<label className={`flex cursor-pointer items-center gap-2 rounded-lg border p-3 text-sm ${topupMethod === 'lynk' ? 'border-sky-500 bg-sky-500/10' : 'border-[#294572]'}`}>
+  <input type="radio" name="topupMethod" value="lynk" checked={topupMethod === 'lynk'} onChange={() => setTopupMethod('lynk')} />
+  Lynk Jamaica – instant transfer
+</label>
+
+<label className={`flex cursor-pointer items-center gap-2 rounded-lg border p-3 text-sm ${topupMethod === 'scotiabank' ? 'border-sky-500 bg-sky-500/10' : 'border-[#294572]'}`}>
+  <input type="radio" name="topupMethod" value="scotiabank" checked={topupMethod === 'scotiabank'} onChange={() => setTopupMethod('scotiabank')} />
+  ScotiaBank – bank transfer
+</label>
+
+<label className={`flex cursor-pointer items-center gap-2 rounded-lg border p-3 text-sm ${topupMethod === 'payoneer' ? 'border-sky-500 bg-sky-500/10' : 'border-[#294572]'}`}>
+  <input type="radio" name="topupMethod" value="payoneer" checked={topupMethod === 'payoneer'} onChange={() => setTopupMethod('payoneer')} />
+  Payoneer – global transfer
+</label>
+
+<label className={`flex cursor-pointer items-center gap-2 rounded-lg border p-3 text-sm ${topupMethod === 'crypto' ? 'border-sky-500 bg-sky-500/10' : 'border-[#294572]'}`}>
+  <input type="radio" name="topupMethod" value="crypto" checked={topupMethod === 'crypto'} onChange={() => setTopupMethod('crypto')} />
+  Crypto (USDT / Binance Pay)
+</label>
 							</div>
 							{topupMethod === 'manual' && (
 								<div className="grid gap-3 rounded-lg border border-amber-700/40 bg-amber-950/20 p-3">
