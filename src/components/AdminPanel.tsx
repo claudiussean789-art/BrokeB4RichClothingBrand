@@ -289,7 +289,16 @@ export default function AdminPanel({ onBackToStore }: AdminPanelProps) {
 		}
 		const updated = data as AdminOrder;
 		setOrders((current) => current.map((order) => (order.id === orderId ? { ...order, ...updated } : order)));
-		setNotice(`Tracking saved for order ${orderId.slice(0, 8)}.`);
+		if (!updated.tracking_number) {
+			setNotice(`Tracking cleared for order ${orderId.slice(0, 8)}.`);
+			return;
+		}
+		const emailResult = await supabase.functions.invoke('send-tracking-email', { body: { orderId } });
+		if (emailResult.error || emailResult.data?.error) {
+			setNotice(`Tracking saved for order ${orderId.slice(0, 8)}, but the customer email was not sent: ${emailResult.data?.error ?? emailResult.error?.message}`);
+			return;
+		}
+		setNotice(`Tracking saved and emailed to the customer for order ${orderId.slice(0, 8)}.`);
 	};
 
 	const updateStatus = async (orderId: string, nextStatus: OrderFulfillmentStatus) => {

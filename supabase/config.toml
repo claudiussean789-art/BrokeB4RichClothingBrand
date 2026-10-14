@@ -11,3 +11,6 @@ verify_jwt = true
 verify_jwt = true
 [functions.confirm-manual-topup]
 verify_jwt = false
+
+[functions.send-tracking-email]
+verify_jwt = true

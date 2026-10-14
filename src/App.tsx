@@ -788,11 +788,8 @@ export default function App() {
 			return;
 		}
 		let receiptReference = paymentReceiptReference;
+		let receiptFileForChat: File | null = null;
 		if (paymentReceipt && !receiptReference) {
-			if (!supabase) {
-				setCheckoutNotice('Receipt upload is unavailable until the payment service is configured. You can remove the file and submit your order without it.');
-				return;
-			}
 			if (paymentReceipt.size > 5 * 1024 * 1024) {
 				setCheckoutNotice('Receipt files must be 5 MB or smaller.');
 				return;
@@ -808,31 +805,30 @@ export default function App() {
 				setCheckoutNotice('Upload a JPG, PNG, WEBP, or PDF receipt.');
 				return;
 			}
-			const receiptId = crypto.randomUUID();
-			const receiptPath = `checkout/${receiptId}.${extension}`;
-			setCheckoutBusy(true);
-			try {
-				const { error } = await supabase.storage
-					.from('checkout-payment-receipts')
-					.upload(receiptPath, paymentReceipt, {
-						cacheControl: '3600',
-						contentType: paymentReceipt.type,
-						upsert: false,
-					});
-				if (error) throw error;
-				receiptReference = receiptId;
-				setPaymentReceiptReference(receiptId);
-			} catch (error) {
-				setCheckoutNotice(error instanceof Error
-					? `Could not upload the payment receipt: ${error.message}`
-					: 'Could not upload the payment receipt. Please try again or remove the file to continue without it.');
-				setCheckoutBusy(false);
-				return;
-			} finally {
-				setCheckoutBusy(false);
+			if (!supabase) {
+				receiptFileForChat = paymentReceipt;
+			} else {
+				const receiptId = crypto.randomUUID();
+				const receiptPath = `checkout/${receiptId}.${extension}`;
+				setCheckoutBusy(true);
+				try {
+					const { error } = await supabase.storage
+						.from('checkout-payment-receipts')
+						.upload(receiptPath, paymentReceipt, {
+							cacheControl: '3600',
+							contentType: paymentReceipt.type,
+							upsert: false,
+						});
+					if (error) throw error;
+					receiptReference = receiptId;
+					setPaymentReceiptReference(receiptId);
+				} catch {
+					receiptFileForChat = paymentReceipt;
+				} finally {
+					setCheckoutBusy(false);
+				}
 			}
-		}
-		if (paymentMethod === 'wallet') {
+		}		if (paymentMethod === 'wallet') {
 			if (!user) {
 				setCheckoutNotice('Sign in to pay with wallet credit.');
 				setAccountOpen(true);
@@ -959,6 +955,7 @@ export default function App() {
 			`ZIP / Postal Code / PO Box: ${postalCode}`,
 			...(deliveryMethod ? [`Delivery method: ${deliveryMethod}`] : []),
 			...(receiptReference ? [`Payment receipt reference: ${receiptReference}`] : []),
+			...(receiptFileForChat ? [`Payment receipt:  (attached in this chat)`] : []),
 		];
 
 		if (deviceModel.trim()) messageLines.push(`Device model / notes: ${deviceModel.trim()}`);
@@ -1002,8 +999,19 @@ export default function App() {
 		);
 		const whatsappUrl =
 			`https://wa.me/${whatsappNumber}?text=${encodeURIComponent(messageLines.join('\n'))}`;
-		window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
-
+		let sharedReceipt = false;
+		if (receiptFileForChat && typeof navigator.canShare === 'function' && navigator.canShare({ files: [receiptFileForChat] })) {
+			try {
+				await navigator.share({ files: [receiptFileForChat], text: messageLines.join('\n') });
+				sharedReceipt = true;
+			} catch {
+				sharedReceipt = false;
+			}
+		}
+		if (!sharedReceipt) window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+		if (receiptFileForChat && !sharedReceipt) {
+			setCheckoutNotice('WhatsApp opened. Please attach your receipt file in the chat so we can verify your payment.');
+		}
 		if (supabase) {
 			setCheckoutBusy(true);
 			try {
@@ -1030,8 +1038,8 @@ export default function App() {
 				});
 				if (error) throw error;
 				setCheckoutNotice(user
-					? 'Your order was saved to your account and sent to WhatsApp. Status: Processing.'
-					: 'Your order was sent to WhatsApp and saved. Status: Processing. Use "Track your order" with your email and phone to see updates.');
+					? 'Your order was saved to your account and sent to WhatsApp. Status: Processing.'+(receiptFileForChat && !sharedReceipt ? ' Please attach your receipt in the WhatsApp chat.' : '')
+					: 'Your order was sent to WhatsApp and saved. Status: Processing.'+(receiptFileForChat && !sharedReceipt ? ' Please attach your receipt in the WhatsApp chat.' : '')+' Use "Track your order" with your email and phone to see updates.');
 				setAccountRefreshKey((key) => key + 1);
 			} catch (error) {
 				setCheckoutNotice(error instanceof Error
@@ -1040,10 +1048,22 @@ export default function App() {
 			} finally {
 				setCheckoutBusy(false);
 			}
-		}	};
+		}
+	};
 
 	return (
 		<main className="min-h-screen bg-[#050d22] text-[#f4f7fc]">
+			<div className="arrival-banner" role="region" aria-label="New arrival announcement">
+				<div className="arrival-track">
+					{[0, 1].map((copy) => (
+						<div className="arrival-group" key={copy} aria-hidden={copy === 1}>
+							{Array.from({ length: 6 }, (_, index) => (
+								<span key={index}>NEW ARRIVAL <span aria-hidden="true">✦</span> BROKEB4RICH <span aria-hidden="true">✦</span> SHOP THE DROP <span aria-hidden="true">✦</span></span>
+							))}
+						</div>
+					))}
+				</div>
+			</div>
 			<header className="sticky top-0 z-10 border-b border-blue-300/15 bg-[#050d22]/95 backdrop-blur">
 				<div className="mx-auto flex min-h-[76px] w-[min(100%-2rem,1160px)] items-center justify-between gap-4">
 					<BrandLogo />

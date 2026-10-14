@@ -15,6 +15,13 @@ button { cursor: pointer; }
 .promo-highlight { color: #ffcc00; font-weight: 700; }
 .promo-ticker-bar:hover .ticker-content, .ticker-content:focus-visible { animation-play-state: paused; }
 @keyframes promo-marquee { 0% { transform: translate(0, 0); } 100% { transform: translate(-100%, 0); } }
+.arrival-banner { overflow: hidden; background: #ffcc00; color: #050d22; font-size: 13px; font-weight: 800; letter-spacing: .14em; white-space: nowrap; padding: 8px 0; }
+.arrival-track { display: flex; width: max-content; animation: arrival-scroll 30s linear infinite; }
+.arrival-group { display: flex; flex-shrink: 0; }
+.arrival-group > span { padding-right: 2.5rem; }
+.arrival-banner:hover .arrival-track { animation-play-state: paused; }
+@keyframes arrival-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) { .arrival-track { animation: none; } }
 @media (prefers-reduced-motion: reduce) { .ticker-content { animation: none; padding-left: 1rem; white-space: normal; } }
 .site-shell { min-height: 100vh; overflow: hidden; background: radial-gradient(circle at 80% 10%, rgba(12,57,141,.34), transparent 26rem), #050d22; }
 .topbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px max(32px, calc((100vw - 1160px) / 2)); border-bottom: 1px solid rgba(92,141,225,.2); background: rgba(5,13,34,.88); backdrop-filter: blur(16px); }
