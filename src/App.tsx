@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import type { User } from '@supabase/supabase-js';
 import AccountPanel from './components/AccountPanel';
-import AdminPanel from './components/AdminPanel';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
-import { cryptoPayment } from './data/cryptoPayment';
-import { highlightedWholesaleTags, wholesaleServices, wholesaleTags } from './data/wholesaleServices';
+import { wholesaleServices } from './data/wholesaleServices';
 
 type OrderType = 'devices' | 'repairs' | 'wholesale';
 type CartKind = OrderType | 'credits';
-type PaymentMethod = 'local' | 'payoneer' | 'wipay' | 'paypal' | 'wallet' | 'crypto';
+type PaymentMethod = 'local' | 'payoneer' | 'wipay' | 'paypal' | 'wallet';
 type LocalRail = 'lynk' | 'ncb' | 'scotiabank';
 
 type Device = {
@@ -36,6 +34,14 @@ type CartItem = {
 	price: number | null;
 	deviceFamily?: string;
 	identifier?: string;
+};
+
+type StoreReview = {
+	id: string;
+	customer_name: string;
+	rating: number;
+	review: string;
+	created_at: string;
 };
 
 type ServerCreditService = {
@@ -296,7 +302,7 @@ const repairServices: RepairService[] = [
 	{ id: 'battery', name: 'Battery Replacement', category: 'Hardware', price: 35 },
 ];
 
-const whatsappNumber = '2034235212';
+const whatsappNumber = '18764229560';
 
 const countries = [
 	'Jamaica',
@@ -360,11 +366,8 @@ function DeviceIcon({ className = 'h-5 w-5' }: { className?: string }) {
 
 function BrandLogo() {
 	return (
-		<a className="inline-flex items-center" href="#top" aria-label="Exclusive Mobile Solutions home">
-			<picture>
-				<source media="(max-width: 639px)" srcSet="/logo-mobile-icon.svg" />
-				<img src="/logo-desktop-horizontal.svg" alt="Exclusive Mobile Solutions" className="h-9 w-auto sm:h-12" />
-			</picture>
+		<a className="inline-flex items-center" href="#top" aria-label="BrokeB4Rich home">
+			<img src="/images/brokeb4rich-logo.jpg" alt="BrokeB4Rich Original Brand" className="h-11 w-11 rounded-full border border-white/20 object-cover object-center sm:h-14 sm:w-14" />
 		</a>
 	);
 }
@@ -394,10 +397,10 @@ function TrashIcon() {
 }
 
 export default function App() {
-	const [orderType, setOrderType] = useState<OrderType>('devices');
+	const orderType: OrderType = 'wholesale';
 	const [searchQuery, setSearchQuery] = useState('');
 	const [cart, setCart] = useState<CartItem[]>([]);
-	const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('crypto');
+	const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('local');
 	const [user, setUser] = useState<User | null>(null);
 	const [authLoading, setAuthLoading] = useState(true);
 	const [walletBalance, setWalletBalance] = useState(0);
@@ -413,7 +416,10 @@ export default function App() {
 	const [customerName, setCustomerName] = useState('');
 	const [customerEmail, setCustomerEmail] = useState('');
 	const [customerPhone, setCustomerPhone] = useState('');
-	const [cryptoTxid, setCryptoTxid] = useState('');
+	const [paymentReceipt, setPaymentReceipt] = useState<File | null>(null);
+	const [paymentReceiptReference, setPaymentReceiptReference] = useState<string | null>(null);
+	const [deliveryMethod, setDeliveryMethod] = useState('');
+	const isPickup = deliveryMethod.startsWith('In-store pickup');
 	const [address, setAddress] = useState('');
 	const [country, setCountry] = useState('');
 	const [stateRegion, setStateRegion] = useState('');
@@ -423,10 +429,17 @@ export default function App() {
 	const [creditSelections, setCreditSelections] = useState<Record<string, string>>({});
 	const [creditQuantities, setCreditQuantities] = useState<Record<string, string>>({});
 	const [creditTargets, setCreditTargets] = useState<Record<string, string>>({});
-	const [wholesaleTag, setWholesaleTag] = useState<string | null>(null);
+	const [wholesaleCategory, setWholesaleCategory] = useState<string | null>(null);
 	const [wholesaleSearch, setWholesaleSearch] = useState('');
-	const [isAdminView, setIsAdminView] = useState(() => window.location.pathname.replace(/\/+$/, '') === '/admin');
-
+	const [wholesaleColorSelections, setWholesaleColorSelections] = useState<Record<string, string>>({});
+	const [wholesaleSizeSelections, setWholesaleSizeSelections] = useState<Record<string, string>>({});
+	const [reviews, setReviews] = useState<StoreReview[]>([]);
+	const [reviewName, setReviewName] = useState('');
+	const [reviewRating, setReviewRating] = useState('5');
+	const [reviewText, setReviewText] = useState('');
+	const [reviewNotice, setReviewNotice] = useState('');
+	const [reviewLoading, setReviewLoading] = useState(false);
+	const [reviewSubmitting, setReviewSubmitting] = useState(false);
 	const refreshWalletBalance = useCallback(async (userId: string) => {
 		if (!supabase) return;
 		const { data, error } = await supabase.from('profiles').select('credit_balance').eq('id', userId).single();
@@ -435,16 +448,53 @@ export default function App() {
 	}, []);
 
 	useEffect(() => {
-		const syncAdminView = () => {
-			setIsAdminView(window.location.pathname.replace(/\/+$/, '') === '/admin');
-		};
-		window.addEventListener('popstate', syncAdminView);
-		return () => window.removeEventListener('popstate', syncAdminView);
+		if (user?.email) setCustomerEmail((current) => current || user.email || '');
+	}, [user?.email]);
+
+	const loadReviews = useCallback(async () => {
+		if (!supabase) return;
+		setReviewLoading(true);
+		const { data, error } = await supabase
+			.from('store_reviews')
+			.select('id, customer_name, rating, review, created_at')
+			.order('created_at', { ascending: false })
+			.limit(50);
+		if (error) {
+			setReviewNotice(`Could not load customer reviews: ${error.message}`);
+		} else {
+			setReviews(data ?? []);
+		}
+		setReviewLoading(false);
 	}, []);
 
 	useEffect(() => {
-		if (user?.email) setCustomerEmail((current) => current || user.email || '');
-	}, [user?.email]);
+		void loadReviews();
+	}, [loadReviews]);
+
+	const submitReview = async (event: FormEvent<HTMLFormElement>) => {
+		event.preventDefault();
+		if (!supabase) {
+			setReviewNotice('Customer reviews are unavailable until the store database is configured.');
+			return;
+		}
+		setReviewSubmitting(true);
+		setReviewNotice('');
+		const { error } = await supabase.from('store_reviews').insert({
+			customer_name: reviewName.trim(),
+			rating: Number(reviewRating),
+			review: reviewText.trim(),
+		});
+		if (error) {
+			setReviewNotice(`Could not submit your review: ${error.message}`);
+		} else {
+			setReviewName('');
+			setReviewRating('5');
+			setReviewText('');
+			setReviewNotice('Thank you! Your review is now public.');
+			await loadReviews();
+		}
+		setReviewSubmitting(false);
+	};
 
 	useEffect(() => {
 		if (!supabase) {
@@ -572,18 +622,21 @@ export default function App() {
 	const filteredComputerRepairServices = filteredServices.filter((service) => service.category === 'Computer Repair');
 	const filteredCameraServices = filteredServices.filter((service) => service.category === 'Camera Services');
 	const filteredOtherServices = filteredServices.filter((service) => !['Samsung FRP', 'Game Repair', 'Computer Repair', 'Camera Services'].includes(service.category));
+	const wholesaleCategories = Array.from(new Set(wholesaleServices.map((service) => service.category)));
 	const filteredWholesaleServices = wholesaleServices.filter((service) => {
 		const query = wholesaleSearch.trim().toLocaleLowerCase();
-		const matchesQuery = !query || `${service.title} ${service.description} ${service.category} ${service.tags.join(' ')}`
+		const matchesQuery = !query || `${service.name} ${service.description} ${service.category}`
 			.toLocaleLowerCase()
 			.includes(query);
-		return matchesQuery && (!wholesaleTag || service.tags.includes(wholesaleTag));
+		return matchesQuery
+			&& (!wholesaleCategory || service.category === wholesaleCategory);
 	});
 
 	const hasRepairs = cart.some((item) => item.kind === 'repairs');
 	const hasDevices = cart.some((item) => item.kind === 'devices');
 	const hasCredits = cart.some((item) => item.kind === 'credits');
 	const hasWholesale = cart.some((item) => item.kind === 'wholesale');
+	const hasPhysicalDeliveryItems = cart.some((item) => item.kind === 'devices' || item.kind === 'wholesale');
 	const hasUnpricedCredits = cart.some((item) => item.kind === 'credits' && item.price === null);
 	const hasUnpricedDevices = cart.some((item) => item.kind === 'devices' && item.price === null);
 	const hasUnpricedRepairs = cart.some((item) => item.kind === 'repairs' && item.price === null);
@@ -627,13 +680,23 @@ export default function App() {
 
 		}]);
 
-	const addWholesaleService = (service: (typeof wholesaleServices)[number]) =>
+	const addWholesaleService = (service: (typeof wholesaleServices)[number]) => {
+		const selectedSize = wholesaleSizeSelections[service.id] ?? (service.sizes.length === 1 ? service.sizes[0] : '');
+		if (!selectedSize || (service.colors?.length && !wholesaleColorSelections[service.id])) return;
+		const selectedColor = service.colors?.find((color) => color.name === wholesaleColorSelections[service.id]);
+		const sizeLabel = service.madeToOrderSizes?.includes(selectedSize) ? `${selectedSize} (made to order)` : selectedSize;
 		setCart((current) => [...current, {
 			id: service.id,
-			name: service.title,
+			name: `${service.name} - Size: ${sizeLabel}${selectedColor ? ` - Color: ${selectedColor.name}` : ''}`,
 			kind: 'wholesale',
-			price: service.price,
+			price: service.priceUSD,
 		}]);
+		setGuestCheckout(true);
+		setCheckoutNotice('');
+		requestAnimationFrame(() => {
+			document.getElementById('checkout-summary')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+		});
+	};
 
 	const renderRepairServices = (services: RepairService[]) => (
 		<div className="divide-y divide-blue-300/10">
@@ -702,6 +765,62 @@ export default function App() {
 	const handleWhatsAppCheckout = async (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault();
 		setCheckoutNotice('');
+		if ((paymentMethod === 'wallet' || paymentMethod === 'paypal') && !user) {
+			setCheckoutNotice(paymentMethod === 'wallet'
+				? 'Sign in to pay with wallet credit.'
+				: 'Sign in or create an account before starting PayPal checkout.');
+			setAccountOpen(true);
+			return;
+		}
+		if ((paymentMethod === 'wallet' || paymentMethod === 'paypal') && !supabase) {
+			setCheckoutNotice(`${paymentMethod === 'wallet' ? 'Wallet' : 'PayPal'} checkout is unavailable until Supabase is configured.`);
+			return;
+		}
+		let receiptReference = paymentReceiptReference;
+		if (paymentReceipt && !receiptReference) {
+			if (!supabase) {
+				setCheckoutNotice('Receipt upload is unavailable until the payment service is configured. You can remove the file and submit your order without it.');
+				return;
+			}
+			if (paymentReceipt.size > 5 * 1024 * 1024) {
+				setCheckoutNotice('Receipt files must be 5 MB or smaller.');
+				return;
+			}
+			const extensionByType: Record<string, string> = {
+				'image/jpeg': 'jpg',
+				'image/png': 'png',
+				'image/webp': 'webp',
+				'application/pdf': 'pdf',
+			};
+			const extension = extensionByType[paymentReceipt.type];
+			if (!extension) {
+				setCheckoutNotice('Upload a JPG, PNG, WEBP, or PDF receipt.');
+				return;
+			}
+			const receiptId = crypto.randomUUID();
+			const receiptPath = `checkout/${receiptId}.${extension}`;
+			setCheckoutBusy(true);
+			try {
+				const { error } = await supabase.storage
+					.from('checkout-payment-receipts')
+					.upload(receiptPath, paymentReceipt, {
+						cacheControl: '3600',
+						contentType: paymentReceipt.type,
+						upsert: false,
+					});
+				if (error) throw error;
+				receiptReference = receiptId;
+				setPaymentReceiptReference(receiptId);
+			} catch (error) {
+				setCheckoutNotice(error instanceof Error
+					? `Could not upload the payment receipt: ${error.message}`
+					: 'Could not upload the payment receipt. Please try again or remove the file to continue without it.');
+				setCheckoutBusy(false);
+				return;
+			} finally {
+				setCheckoutBusy(false);
+			}
+		}
 		if (paymentMethod === 'wallet') {
 			if (!user) {
 				setCheckoutNotice('Sign in to pay with wallet credit.');
@@ -733,9 +852,11 @@ export default function App() {
 						country,
 						state_region: stateRegion.trim(),
 						postal_code: postalCode.trim(),
+						delivery_method: deliveryMethod,
 						device_model: deviceModel.trim(),
 						email: customerEmail.trim() || user.email || '',
 						phone: customerPhone.trim(),
+						receipt_reference: receiptReference,
 					},
 				});
 				if (error) throw error;
@@ -750,65 +871,6 @@ export default function App() {
 				setCheckoutNotice(/INSUFFICIENT_CREDIT|insufficient (wallet )?(credit|funds|balance)/i.test(message)
 					? 'Insufficient wallet credit. Add funds in My account and try again.'
 					: message);
-			} finally {
-				setCheckoutBusy(false);
-			}
-			return;
-		}
-
-		if (paymentMethod === 'crypto') {
-			if (!user) {
-				setCheckoutNotice('Sign in or create an account to submit a crypto payment for verification.');
-				setAccountOpen(true);
-				return;
-			}
-			if (!supabase) {
-				setCheckoutNotice('Crypto checkout requires a configured Supabase project. No order was submitted.');
-				return;
-			}
-			if (cryptoPayment.usdtAddress.startsWith('YOUR_') || cryptoPayment.binancePayId.startsWith('YOUR_')) {
-				setCheckoutNotice('Crypto payment details are still placeholders. Update src/data/cryptoPayment.ts before accepting payments.');
-				return;
-			}
-			const txid = cryptoTxid.trim();
-			if (txid.length < 6 || txid.length > 200) {
-				setCheckoutNotice('Enter a valid transaction ID or Binance Pay ID (6–200 characters).');
-				return;
-			}
-			if (cart.some((item) => item.price === null)) {
-				setCheckoutNotice('Crypto payment requires a confirmed price for every cart item. Remove unpriced items and request a quote separately.');
-				return;
-			}
-			setCheckoutBusy(true);
-			try {
-				const { data: order, error } = await supabase.rpc('submit_crypto_order', {
-					p_items: cart.map((item) => ({
-						id: item.id,
-						kind: item.kind,
-						name: item.name,
-						identifier: item.identifier ?? null,
-					})),
-					p_customer: {
-						full_name: customerName.trim(),
-						address: address.trim(),
-						country,
-						state_region: stateRegion.trim(),
-						postal_code: postalCode.trim(),
-						device_model: deviceModel.trim(),
-						email: customerEmail.trim() || user.email || '',
-						phone: customerPhone.trim(),
-					},
-					p_txid: txid,
-				});
-				if (error) throw error;
-				if (!order?.id) throw new Error('The crypto payment order was not submitted.');
-				setCart([]);
-				setCryptoTxid('');
-				setCheckoutNotice(`Order ${String(order.id).slice(0, 8)} submitted. Status: Pending Verification. We will verify the transfer before processing your order.`);
-				setAccountNotice('Your crypto order is pending payment verification. The transaction ID is saved in your account history.');
-				setAccountRefreshKey((key) => key + 1);
-			} catch (error) {
-				setCheckoutNotice(error instanceof Error ? error.message : 'Could not submit the crypto order for verification.');
 			} finally {
 				setCheckoutBusy(false);
 			}
@@ -840,9 +902,11 @@ export default function App() {
 						country,
 						state_region: stateRegion.trim(),
 						postal_code: postalCode.trim(),
+						delivery_method: deliveryMethod,
 						device_model: deviceModel.trim(),
 						email: customerEmail.trim() || user.email || '',
 						phone: customerPhone.trim(),
+						receipt_reference: receiptReference,
 					},
 					p_payment_method: 'paypal',
 				});
@@ -873,22 +937,8 @@ export default function App() {
 				: paymentMethod === 'wipay'
 					? 'WiPay — please send current payment instructions'
 					: 'PayPal';
-						const messageLines = [
-							devices.length && repairs.length && wholesale.length
-								? '*EXCLUSIVE MOBILE SOLUTIONS - DEVICE, REPAIR AND WHOLESALE REQUEST*'
-								: devices.length && repairs.length
-								? '*EXCLUSIVE MOBILE SOLUTIONS - DEVICE PURCHASE AND REPAIR REQUEST*'
-								: devices.length && wholesale.length
-									? '*EXCLUSIVE MOBILE SOLUTIONS - DEVICE AND WHOLESALE REQUEST*'
-									: repairs.length && wholesale.length
-										? '*EXCLUSIVE MOBILE SOLUTIONS - REPAIR AND WHOLESALE REQUEST*'
-										: devices.length
-									? '*EXCLUSIVE MOBILE SOLUTIONS - DEVICE PURCHASE*'
-									: repairs.length
-						? '*EXCLUSIVE MOBILE SOLUTIONS - REPAIR SERVICE ORDER*'
-						: wholesale.length
-							? '*EXCLUSIVE MOBILE SOLUTIONS - WHOLESALE SERVICES REQUEST*'
-							: '*EXCLUSIVE MOBILE SOLUTIONS - SERVER CREDITS REQUEST*',
+		const messageLines = [
+			'*BROKEB4RICH CLOTHING ORDER*',
 			`Customer Name: ${customerName}`,
 			...(customerEmail.trim() ? [`Customer Email: ${customerEmail.trim()}`] : []),
 			...(customerPhone.trim() ? [`Customer Phone: ${customerPhone.trim()}`] : []),
@@ -896,6 +946,8 @@ export default function App() {
 			`Country: ${country}`,
 			`State / Parish / Province: ${stateRegion}`,
 			`ZIP / Postal Code / PO Box: ${postalCode}`,
+			...(deliveryMethod ? [`Delivery method: ${deliveryMethod}`] : []),
+			...(receiptReference ? [`Payment receipt reference: ${receiptReference}`] : []),
 		];
 
 		if (deviceModel.trim()) messageLines.push(`Device model / notes: ${deviceModel.trim()}`);
@@ -922,7 +974,7 @@ export default function App() {
 		if (wholesale.length) {
 			messageLines.push(
 				'',
-				'Wholesale services:',
+				'Clothing items:',
 				...wholesale.map((item) => `- ${item.name} (${formatPrice(item.price ?? 0)} USD)`),
 			);
 		}
@@ -930,7 +982,7 @@ export default function App() {
 		if (repairs.some((item) => item.id === 'camera-installation' || item.id === 'camera-troubleshooting')) {
 			messageLines.push('Camera service area requested: Montego Bay, Hopewell, Sandy Bay, and Lucea.');
 		}
-		messageLines.push('', `Device total: ${formatPrice(deviceTotal)} USD`, `Repair services total: ${formatPrice(repairTotal)} USD`, `Priced server credits total: ${formatPrice(creditTotal)} USD`, `Wholesale services total: ${formatPrice(wholesaleTotal)} USD`);
+		messageLines.push('', `Clothing total: ${formatPrice(wholesaleTotal)} USD`);
 		if (hasUnpricedDevices) messageLines.push('Note: device total excludes devices whose price is to be confirmed.');
 		if (hasUnpricedRepairs) messageLines.push('Note: repair service prices pending confirmation are excluded from the repair total.');
 		messageLines.push(
@@ -959,8 +1011,10 @@ export default function App() {
 		country,
 		state_region: stateRegion.trim(),
 		postal_code: postalCode.trim(),
+		delivery_method: deliveryMethod,
 		device_model: deviceModel.trim(),
-					},
+		receipt_reference: receiptReference,
+		},
 					p_payment_method: paymentMethod,
 				});
 				if (error) throw error;
@@ -976,40 +1030,13 @@ export default function App() {
 		}
 	};
 
-	const openAdminView = () => {
-		window.history.pushState({}, '', '/admin');
-		setIsAdminView(true);
-		setNavigationOpen(false);
-	};
-
-	if (isAdminView) {
-		return (
-			<AdminPanel
-				onBackToStore={() => {
-					window.history.pushState({}, '', '/');
-					setIsAdminView(false);
-				}}
-			/>
-		);
-	}
-
 	return (
 		<main className="min-h-screen bg-[#050d22] text-[#f4f7fc]">
-			<div className="promo-ticker-bar" aria-label="Announcements">
-				<a
-					className="ticker-content"
-					href="https://t.me/techfix_pro"
-					target="_blank"
-					rel="noopener noreferrer"
-				>
-					🔥 <span className="promo-highlight">SPECIAL PROMO:</span> Fast Carrier Unlocks &amp; Digital Tool Credits | Get 5% Off First Order | Contact Us on Telegram!
-				</a>
-			</div>
 			<header className="sticky top-0 z-10 border-b border-blue-300/15 bg-[#050d22]/95 backdrop-blur">
 				<div className="mx-auto flex min-h-[76px] w-[min(100%-2rem,1160px)] items-center justify-between gap-4">
 					<BrandLogo />
 					<div className="flex items-center gap-3">
-						<span className="hidden text-xs font-bold tracking-[.15em] text-slate-400 sm:block">DEVICE CARE, DONE RIGHT</span>
+						<span className="hidden text-xs font-bold tracking-[.15em] text-slate-400 sm:block">STYLE DONE RIGHT</span>
 						<button
 							className="grid h-10 w-10 place-items-center rounded-lg border border-white/25 text-xl text-white transition hover:border-sky-400 hover:text-sky-200"
 							type="button"
@@ -1019,13 +1046,6 @@ export default function App() {
 							onClick={() => setNavigationOpen((open) => !open)}
 						>
 							{navigationOpen ? '×' : '☰'}
-						</button>
-						<button
-							className="hidden min-h-10 rounded-lg border border-white/20 px-3 text-xs font-bold text-slate-200 transition hover:border-sky-400 hover:text-sky-200 sm:inline-flex sm:items-center"
-							type="button"
-							onClick={openAdminView}
-						>
-							Admin
 						</button>
 						<button
 							className="min-h-10 rounded-lg border border-sky-700 px-3 text-xs font-bold text-sky-200 transition hover:border-sky-400 hover:bg-sky-950/50 sm:px-4 sm:text-sm"
@@ -1041,28 +1061,15 @@ export default function App() {
 					<nav className="border-t border-blue-300/15 bg-[#091835]" id="site-navigation" aria-label="Main navigation">
 						<div className="mx-auto grid w-[min(100%-2rem,1160px)] gap-1 py-2 sm:grid-cols-2 lg:grid-cols-4">
 							<a className="rounded-lg px-4 py-3 text-sm font-medium text-slate-200 hover:bg-white/5 hover:text-sky-300" href="#top" onClick={() => setNavigationOpen(false)}>Home</a>
-							<a className="rounded-lg px-4 py-3 text-sm font-medium text-slate-200 hover:bg-white/5 hover:text-sky-300" href="#checkout-summary" onClick={() => setNavigationOpen(false)}>Place Order</a>
+							<a className="rounded-lg px-4 py-3 text-sm font-medium text-slate-200 hover:bg-white/5 hover:text-sky-300" href="#checkout-summary" onClick={() => setNavigationOpen(false)}>Shopping Cart &amp; Place Order</a>
 							<a className="rounded-lg px-4 py-3 text-sm font-medium text-sky-200 hover:bg-white/5 hover:text-sky-100" href="#catalog-title" aria-current="page" onClick={() => setNavigationOpen(false)}>Products &amp; Services</a>
-							<button
-								className="rounded-lg px-4 py-3 text-left text-sm font-medium text-slate-200 hover:bg-white/5 hover:text-sky-300"
-								type="button"
-								onClick={() => { setNavigationOpen(false); setGuestCheckout(false); setAccountNotice(''); setAccountOpen(true); }}
-							>
-								Add Credit
-							</button>
+							<a className="rounded-lg px-4 py-3 text-sm font-medium text-slate-200 hover:bg-white/5 hover:text-sky-300" href="#reviews-title" onClick={() => setNavigationOpen(false)}>Customer Reviews</a>
 							<button
 								className="rounded-lg px-4 py-3 text-left text-sm font-medium text-slate-200 hover:bg-white/5 hover:text-sky-300"
 								type="button"
 								onClick={() => { setNavigationOpen(false); setGuestCheckout(false); setAccountNotice(''); setAccountOpen(true); }}
 							>
 								My Account
-							</button>
-							<button
-								className="rounded-lg px-4 py-3 text-left text-sm font-medium text-slate-200 hover:bg-white/5 hover:text-sky-300"
-								type="button"
-								onClick={openAdminView}
-							>
-								Admin
 							</button>
 						</div>
 					</nav>
@@ -1084,9 +1091,16 @@ export default function App() {
 					<p className="font-semibold text-slate-300">
 						<a className="hover:text-sky-300" href="#top">Home</a>
 						<span aria-hidden="true" className="mx-2 text-slate-600">/</span>
-						<span>Products &amp; Services</span>
+						<span>Streetwear Collection</span>
 					</p>
-					<p className="flex flex-wrap items-center gap-x-3 gap-y-1">
+					<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+						<button
+							className="rounded-md border border-[#294572] px-2.5 py-1 font-semibold text-sky-200 transition hover:border-sky-400 hover:text-white"
+							type="button"
+							onClick={() => document.getElementById('checkout-summary')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+						>
+							Shopping cart ({cart.length})
+						</button>
 						<span>{user ? `Welcome, ${user.user_metadata.full_name || user.email || 'customer'}` : 'Welcome, Guest'}</span>
 						<button
 							className="font-semibold text-sky-300 hover:text-white"
@@ -1100,81 +1114,30 @@ export default function App() {
 								Checkout as Guest
 							</button>
 						)}
-					</p>
-				</div>
-				<div className="-mx-1 flex gap-2 overflow-x-auto px-1 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Popular service filters">
-					{['Google Pixel', 'FMI OFF for iPad WiFi', 'AT&T', 'T-Mobile — PRO', 'Mexico Nextel', 'iCloud'].map((tag) => (
-						<button
-							className="shrink-0 rounded-full border border-[#294572] bg-[#091835] px-3 py-1.5 text-xs font-medium text-sky-200 transition hover:border-sky-400 hover:bg-sky-950"
-							key={tag}
-							type="button"
-							onClick={() => {
-								setOrderType('wholesale');
-								setWholesaleSearch('');
-								setWholesaleTag(tag);
-								document.getElementById('catalog-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-							}}
-						>
-							{tag}
-						</button>
-					))}
+					</div>
 				</div>
 				<section className="py-12 sm:py-16" aria-labelledby="page-title">
-					<p className="mb-4 text-xs font-bold tracking-[.2em] text-sky-400">YOUR LOCAL MOBILE SPECIALISTS</p>
+					<p className="mb-4 text-xs font-bold tracking-[.2em] text-sky-400">BROKEB4RICH STREETWEAR</p>
 					<h1 className="max-w-3xl text-5xl font-extrabold leading-[.98] sm:text-7xl" id="page-title">
-						Devices and repairs,<br /><span className="text-sky-400">made simple.</span>
+						Motivational streetwear,<br /><span className="text-sky-400">made for the grind.</span>
 					</h1>
 					<p className="mt-5 max-w-2xl text-base leading-7 text-slate-400 sm:text-lg">
-						Choose a device or a repair service, then send your request straight to our team.
+						Shop BrokeB4Rich designs, choose your style, and send your order straight to our team.
 					</p>
 				</section>
-
-				<div className="mb-7 grid w-full max-w-3xl grid-cols-1 gap-1.5 rounded-xl border border-blue-300/20 bg-[#091835] p-1.5 sm:grid-cols-3" role="group" aria-label="Choose order type">
-					<button
-						className={`flex min-h-12 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors sm:text-base ${orderType === 'devices' ? 'bg-sky-500 text-[#03142a]' : 'text-slate-300 hover:bg-white/5'}`}
-						type="button"
-						aria-pressed={orderType === 'devices'}
-						onClick={() => setOrderType('devices')}
-					>
-						<DeviceIcon className="h-[18px] w-[18px]" /> Device Purchases
-					</button>
-					<button
-						className={`flex min-h-12 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors sm:text-base ${orderType === 'repairs' ? 'bg-sky-500 text-[#03142a]' : 'text-slate-300 hover:bg-white/5'}`}
-						type="button"
-						aria-pressed={orderType === 'repairs'}
-						onClick={() => setOrderType('repairs')}
-					>
-						<WrenchIcon className="h-[18px] w-[18px]" /> Repair Services
-					</button>
-					<button
-						className={`flex min-h-12 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors sm:text-base ${orderType === 'wholesale' ? 'bg-sky-500 text-[#03142a]' : 'text-slate-300 hover:bg-white/5'}`}
-						type="button"
-						aria-pressed={orderType === 'wholesale'}
-						onClick={() => setOrderType('wholesale')}
-					>
-						Wholesale Services
-					</button>
-				</div>
 
 				<form onSubmit={handleWhatsAppCheckout}>
 					<div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_350px]">
 						<section aria-labelledby="catalog-title">
 							<div className="mb-5 flex items-end justify-between gap-4">
 								<div>
-									<p className="mb-2 text-[11px] font-bold tracking-[.17em] text-sky-400">{orderType === 'devices' ? 'SHOP DEVICES' : orderType === 'repairs' ? 'BOOK A REPAIR' : 'WHOLESALE CATALOG'}</p>
+									<p className="mb-2 text-[11px] font-bold tracking-[.17em] text-sky-400">SHOP BROKEB4RICH</p>
 									<h2 className="text-3xl font-bold leading-tight sm:text-4xl" id="catalog-title">
-										{orderType === 'devices' ? 'Find your next phone' : orderType === 'repairs' ? 'What can we fix?' : 'Products & services'}
+										Available Design &amp; Style
 									</h2>
 								</div>
-								<span className="hidden text-sm text-slate-500 sm:block">{orderType === 'devices' ? 'Browse by brand' : orderType === 'repairs' ? `${filteredServices.length} services` : `${filteredWholesaleServices.length} services`}</span>
+								<span className="hidden text-sm text-slate-500 sm:block">{filteredWholesaleServices.length} styles</span>
 							</div>
-							{orderType === 'repairs' && (
-								<div className="mb-4 rounded-xl border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-xs leading-5 text-sky-100">
-									<p>Appointment schedule: Monday–Saturday. Sunday emergency appointments only, 11:00 PM–3:00 AM.</p>
-									<p className="mt-1">Security camera installation and troubleshooting available in Montego Bay, Hopewell, Sandy Bay, and Lucea.</p>
-								</div>
-							)}
-
 							<label className="mb-7 flex min-h-12 items-center gap-3 rounded-xl border border-[#294572] bg-[#07142e] px-4 text-slate-400 transition focus-within:border-sky-400 focus-within:ring-2 focus-within:ring-sky-400/15">
 								<SearchIcon />
 								<input
@@ -1182,8 +1145,8 @@ export default function App() {
 									type="search"
 									value={orderType === 'wholesale' ? wholesaleSearch : searchQuery}
 									onChange={(event) => orderType === 'wholesale' ? setWholesaleSearch(event.target.value) : setSearchQuery(event.target.value)}
-									placeholder={orderType === 'devices' ? 'Search all brands and models...' : orderType === 'repairs' ? 'Search repair services...' : 'Search services, carriers or device models...'}
-									aria-label={orderType === 'devices' ? 'Search device brands and models' : orderType === 'repairs' ? 'Search repair services' : 'Search wholesale services'}
+									placeholder="Search clothing, styles, or categories..."
+									aria-label="Search clothing designs and categories"
 								/>
 								{(orderType === 'wholesale' ? wholesaleSearch : searchQuery) && (
 									<button className="text-xs font-semibold text-sky-400 hover:text-white" type="button" onClick={() => orderType === 'wholesale' ? setWholesaleSearch('') : setSearchQuery('')}>
@@ -1196,9 +1159,9 @@ export default function App() {
 								<div className="rounded-2xl border border-[#243f70] bg-[#091835] p-4 sm:p-6">
 									<div className="mb-5 flex flex-col gap-3 border-b border-blue-300/15 pb-4 sm:flex-row sm:items-end sm:justify-between">
 										<div>
-											<p className="mb-1 text-[10px] font-bold uppercase tracking-[.18em] text-sky-400">Official unlock & service portal</p>
-											<h3 className="text-xl font-bold text-white">Available models &amp; services</h3>
-											<p className="mt-1 text-xs text-slate-400">Search the catalog or choose a tag to narrow the results.</p>
+											<p className="mb-1 text-[10px] font-bold uppercase tracking-[.18em] text-sky-400">Motivational Street Wear</p>
+											<h3 className="text-xl font-bold text-white">Available Design &amp; Style</h3>
+											<p className="mt-1 text-xs text-slate-400">Choose a category to find your next favorite look.</p>
 										</div>
 										<span className="w-fit rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1 text-xs font-semibold text-sky-200">
 											{filteredWholesaleServices.length} {filteredWholesaleServices.length === 1 ? 'service' : 'services'}
@@ -1206,80 +1169,98 @@ export default function App() {
 									</div>
 									<div className="mb-5">
 										<div className="mb-2 flex items-center justify-between gap-3">
-											<p className="text-[10px] font-bold tracking-wider text-slate-400">FILTER BY MODEL OR SERVICE</p>
+											<p className="text-[10px] font-bold tracking-wider text-slate-400">SHOP BY CATEGORY</p>
 											<button
 												className="text-xs font-semibold text-sky-300 hover:text-white"
 												type="button"
-												onClick={() => { setWholesaleTag(null); setWholesaleSearch(''); }}
+												onClick={() => { setWholesaleCategory(null); setWholesaleSearch(''); }}
 											>
-												Reset filters
+												Show all styles
 											</button>
 										</div>
-										<div className="flex flex-wrap gap-2">
-											{wholesaleTags.map((tag) => {
-												const isHighlighted = highlightedWholesaleTags.has(tag);
-												const isSelected = wholesaleTag === tag;
-												return (
-													<button
-														className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition ${isSelected ? 'border-sky-400 bg-sky-500 text-[#03142a]' : isHighlighted ? 'border-amber-400/50 bg-amber-400/10 text-amber-100 hover:border-amber-300' : 'border-[#294572] bg-[#07142e] text-slate-300 hover:border-sky-400 hover:text-white'}`}
-														key={tag}
-														type="button"
-														aria-pressed={isSelected}
-														onClick={() => setWholesaleTag(isSelected ? null : tag)}
-													>
-														{tag}
-													</button>
-												);
-											})}
-										</div>
+										<label className="mb-3 block text-[10px] font-bold tracking-wider text-slate-400">
+											FILTER BY CATEGORY
+											<select
+												className="mt-2 block w-full rounded-lg border border-[#294572] bg-[#07142e] px-3 py-2 text-sm font-medium text-slate-100 outline-none focus:border-sky-400 sm:max-w-sm"
+												value={wholesaleCategory ?? ''}
+												onChange={(event) => {
+													setWholesaleCategory(event.target.value || null);
+													setWholesaleSearch('');
+												}}
+											>
+												<option value="">All categories</option>
+												{wholesaleCategories.map((category) => (
+													<option key={category} value={category}>{category}</option>
+												))}
+											</select>
+										</label>
 									</div>
 									{filteredWholesaleServices.length ? (
 										<div className="grid gap-3 sm:grid-cols-2" aria-live="polite">
 											{filteredWholesaleServices.map((service) => (
 												<article className="flex min-w-0 flex-col rounded-xl border border-[#294572] bg-[#07142e] p-4 transition hover:border-sky-500/60" key={service.id}>
-													{service.logo && (
+													{service.colors?.length ? (
+														<div className="mb-3">
+															<label className="mb-2 block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+																Color
+																<select
+																	className="mt-1 block w-full rounded-lg border border-[#294572] bg-[#07142e] px-3 py-2 text-sm font-medium text-slate-100 outline-none focus:border-sky-400"
+																	value={wholesaleColorSelections[service.id] ?? ''}
+																	onChange={(event) => setWholesaleColorSelections((current) => ({ ...current, [service.id]: event.target.value }))}
+																>
+																	<option value="" disabled>Select a color</option>
+																	{service.colors.map((color) => (
+																		<option key={color.name} value={color.name}>{color.name}</option>
+																	))}
+																</select>
+															</label>
+															<img
+																src={service.colors.find((color) => color.name === wholesaleColorSelections[service.id])?.image ?? service.colors[0].image}
+																alt={`${service.name} in ${wholesaleColorSelections[service.id] ?? service.colors[0].name}`}
+																className="h-56 w-full rounded-lg border border-[#16466d] bg-[#050d22] object-contain"
+																loading="lazy"
+															/>
+														</div>
+													) : (
 														<div className="mb-3 flex h-20 items-center justify-center rounded-lg border border-[#16466d] bg-[#050d22] p-2">
-															<img src={service.logo} alt={`${service.title} logo`} className="h-full w-full object-contain" loading="lazy" />
+															<img src={service.image} alt={`${service.name} BrokeB4Rich logo`} className="h-full w-full object-contain" loading="lazy" />
 														</div>
 													)}
 													<div className="mb-2 flex items-center justify-between gap-3">
-														<span className={`rounded px-2 py-1 text-[9px] font-extrabold tracking-wide ${service.status === 'INSTANT' ? 'bg-emerald-400/15 text-emerald-200' : service.status === 'EXPRESS' ? 'bg-sky-400/15 text-sky-200' : service.status === 'HOT' ? 'bg-amber-400/15 text-amber-200' : service.status === 'SPECIAL' ? 'bg-rose-400/15 text-rose-200' : 'bg-violet-400/15 text-violet-200'}`}>
-															{service.status}
+														<span className={`rounded px-2 py-1 text-[9px] font-extrabold tracking-wide ${service.inStock ? 'bg-emerald-400/15 text-emerald-200' : 'bg-rose-400/15 text-rose-200'}`}>
+															{service.inStock ? 'IN STOCK' : 'OUT OF STOCK'}
 														</span>
-														<span className="text-[11px] text-slate-400">{service.time}</span>
 													</div>
 													<p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">{service.category}</p>
-													<h4 className="text-sm font-bold leading-snug text-slate-100">{service.title}</h4>
+													<h4 className="text-sm font-bold leading-snug text-slate-100">{service.name}</h4>
 													<p className="mt-2 flex-1 text-xs leading-5 text-slate-400">{service.description}</p>
-													<div className="mt-3 flex flex-wrap gap-1.5 border-t border-blue-300/10 pt-3">
-														{service.tags.map((tag) => (
-															<span className="rounded bg-white/5 px-1.5 py-1 text-[9px] text-slate-400" key={tag}>{tag}</span>
-														))}
-													</div>
+													<label className="mt-3 block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+														Size
+														<select
+															className="mt-1 block w-full rounded-lg border border-[#294572] bg-[#07142e] px-3 py-2 text-sm font-medium text-slate-100 outline-none focus:border-sky-400"
+															value={wholesaleSizeSelections[service.id] ?? (service.sizes.length === 1 ? service.sizes[0] : '')}
+															onChange={(event) => setWholesaleSizeSelections((current) => ({ ...current, [service.id]: event.target.value }))}
+														>
+															{service.sizes.length > 1 && <option value="" disabled>Select a size</option>}
+															{service.sizes.map((size) => (
+																<option key={size} value={size}>
+																	{service.madeToOrderSizes?.includes(size) ? `${size} (made to order)` : size}
+																</option>
+															))}
+														</select>
+													</label>
 													<div className="mt-3 flex items-center justify-between gap-3">
 														<span className="text-xs font-semibold text-slate-300">
-															{service.requestOnly
-																? <>Price <strong className="text-sky-300">{service.price.toFixed(4)} USD / check</strong></>
-																: <>Price <strong className="text-sky-300">{formatPrice(service.price)} USD</strong></>}
+															Price <strong className="text-sky-300">{formatPrice(service.priceUSD)} / JMD {service.priceJMD.toLocaleString('en-JM')}</strong>
 														</span>
-														{service.requestOnly ? (
-															<a
-																className="inline-flex min-h-9 items-center rounded-lg border border-sky-500 px-3 text-xs font-bold text-sky-200 transition hover:bg-sky-500/10"
-																href={`https://wa.me/${whatsappNumber}?text=${encodeURIComponent(`Hello, I would like to request a Google Pixel information check. Listed price: $${service.price.toFixed(4)} per check.`)}`}
-																target="_blank"
-																rel="noopener noreferrer"
-															>
-																Request check
-															</a>
-														) : (
-															<button
-																className="min-h-9 rounded-lg bg-sky-500 px-3 text-xs font-bold text-[#03142a] transition hover:bg-sky-300"
-																type="button"
-																onClick={() => addWholesaleService(service)}
-															>
-																Add to cart
-															</button>
-														)}
+														<button
+															className="min-h-9 rounded-lg bg-sky-500 px-3 text-xs font-bold text-[#03142a] transition hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-50"
+															type="button"
+															onClick={() => addWholesaleService(service)}
+															disabled={!service.inStock || (service.sizes.length > 1 && !wholesaleSizeSelections[service.id]) || Boolean(service.colors?.length && !wholesaleColorSelections[service.id])}
+														>
+															Add to cart
+														</button>
 													</div>
 												</article>
 											))}
@@ -1409,6 +1390,7 @@ export default function App() {
 								</p>
 							)}
 
+							{orderType !== 'wholesale' && (
 							<section className="mt-12 border-t border-blue-300/15 pt-8" aria-labelledby="server-credits-title">
 								<div className="mb-5">
 									<p className="mb-2 text-[11px] font-bold tracking-[.17em] text-sky-400">SOFTWARE & LICENSES</p>
@@ -1660,6 +1642,7 @@ export default function App() {
 									})}
 								</div>
 							</section>
+							)}
 						</section>
 
 						<aside id="checkout-summary" className="rounded-2xl border border-[#243f70] bg-[#091835] p-5 shadow-xl lg:sticky lg:top-24" aria-labelledby="summary-title">
@@ -1667,7 +1650,7 @@ export default function App() {
 								<summary className="flex cursor-pointer list-none items-center justify-between gap-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400 [&::-webkit-details-marker]:hidden">
 								<div>
 									<p className="mb-1 text-[10px] font-bold tracking-[.16em] text-sky-400">YOUR REQUEST</p>
-									<h2 className="text-xl font-bold" id="summary-title">Order summary</h2>
+									<h2 className="text-xl font-bold" id="summary-title">Shopping cart &amp; order summary</h2>
 								</div>
 								<div className="flex items-center gap-2">
 									<span className="grid h-9 min-w-9 place-items-center rounded-lg border border-[#16466d] bg-[#071a34] px-2 text-sm font-bold text-sky-400" aria-label={`${cart.length} items`}>
@@ -1681,7 +1664,7 @@ export default function App() {
 							{cart.length === 0 ? (
 								<div className="grid min-h-32 place-items-center py-5 text-center text-sm leading-6 text-slate-500">
 									<div><span className="mx-auto mb-3 grid h-10 w-10 place-items-center rounded-full border border-[#243f70] text-slate-400"><DeviceIcon /></span>
-										Your selected devices and<br />services will appear here.
+										Your selected clothing designs will appear here.
 									</div>
 								</div>
 							) : (
@@ -1720,7 +1703,7 @@ export default function App() {
 							)}
 							{hasWholesale && (
 								<div className={`flex items-center justify-between ${hasDevices || hasRepairs ? '' : 'border-t border-blue-300/15'} py-4`}>
-									<span className="text-sm text-slate-400">Wholesale services total</span>
+									<span className="text-sm text-slate-400">Clothing total</span>
 									<strong>{formatPrice(wholesaleTotal)} <small className="text-xs font-normal text-slate-500">USD</small></strong>
 								</div>
 							)}
@@ -1763,55 +1746,32 @@ export default function App() {
 										value={paymentMethod}
 										onChange={(event) => {
 											const value = event.target.value;
-											setPaymentMethod(value === 'payoneer' || value === 'wipay' || value === 'paypal' || value === 'wallet' || value === 'crypto' ? value : 'local');
+											setPaymentMethod(value === 'payoneer' || value === 'wipay' || value === 'paypal' || value === 'wallet' ? value : 'local');
 										}}
 									>
 										<option value="local">Local transfer</option>
-										<option value="crypto">USDT / Binance Pay (Pending Verification)</option>
 										<option value="payoneer">Payoneer payment link</option>
 										<option value="wipay">WiPay</option>
 										<option value="paypal">PayPal</option>
 										<option value="wallet">Wallet credit</option>
 									</select>
-									{paymentMethod === 'crypto' && (
-										<div className="grid gap-3 rounded-lg border border-amber-500/30 bg-amber-950/20 p-3">
-											<div>
-												<p className="text-sm font-bold text-amber-100">Crypto payment — manual verification</p>
-										<p className="mt-1 text-xs leading-5 text-amber-100/80">Send <strong>{formatPrice(orderTotal)} USDT</strong> using TRC20 or Binance Pay, then enter the transaction ID below. Orders remain Pending Verification until payment is checked. A submitted TXID is not proof of payment.</p>
-											</div>
-											<div className="grid gap-2 rounded-lg border border-amber-300/15 bg-[#07142e] p-3 text-xs">
-												<p><span className="text-slate-400">USDT network:</span> <strong className="text-white">{cryptoPayment.usdtNetwork}</strong></p>
-												<p className="break-all"><span className="text-slate-400">USDT address:</span> <strong className="text-white">{cryptoPayment.usdtAddress}</strong></p>
-												<p className="break-all"><span className="text-slate-400">Binance Pay ID:</span> <strong className="text-white">{cryptoPayment.binancePayId}</strong></p>
-											</div>
-											{!cryptoPayment.qrImagePath.includes('UPDATE_WITH') && (
-												<img className="mx-auto max-h-48 rounded-lg bg-white p-2" src={cryptoPayment.qrImagePath} alt="USDT TRC20 payment QR code" />
-											)}
-											{cryptoPayment.qrImagePath.includes('UPDATE_WITH') && (
-												<p className="text-center text-xs text-slate-400">Add your QR image in src/data/cryptoPayment.ts to display it here.</p>
-											)}
-											{(cryptoPayment.usdtAddress.startsWith('YOUR_') || cryptoPayment.binancePayId.startsWith('YOUR_')) && (
-												<p className="rounded border border-amber-500/30 p-2 text-xs text-amber-100" role="status">Replace the crypto payment placeholders in src/data/cryptoPayment.ts before accepting payment.</p>
-											)}
-											{cart.some((item) => item.price === null) && (
-												<p className="rounded border border-amber-500/30 p-2 text-xs text-amber-100" role="status">One or more cart items need a confirmed price before crypto payment can be submitted.</p>
-											)}
-											<label className="grid gap-2 text-xs font-semibold text-slate-300">
-												Transaction ID (TXID) / Binance Pay ID
-												<input
-													className="h-11 rounded-lg border border-[#294572] bg-[#081630] px-3 text-sm text-white outline-none focus:border-sky-400"
-													autoComplete="off"
-													maxLength={200}
-													minLength={6}
-													required
-													value={cryptoTxid}
-													onChange={(event) => setCryptoTxid(event.target.value)}
-													placeholder="Enter the transaction reference after sending payment"
-												/>
-											</label>
-										</div>
-									)}
-										{paymentMethod === 'paypal' && (
+									<label className="grid gap-2 rounded-lg border border-[#294572] bg-[#07142e] p-3 text-xs font-semibold text-slate-300">
+										Bank transfer receipt (optional for any payment method)
+										<input
+											className="text-xs text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-sky-500 file:px-3 file:py-2 file:font-bold file:text-[#03142a]"
+											type="file"
+											accept="image/jpeg,image/png,image/webp,application/pdf"
+											onChange={(event) => {
+												setPaymentReceipt(event.target.files?.[0] ?? null);
+												setPaymentReceiptReference(null);
+											}}
+										/>
+										<span className="font-normal text-slate-500">
+											JPG, PNG, WEBP, or PDF · up to 5 MB
+											{paymentReceiptReference ? ` · Uploaded (reference ${paymentReceiptReference})` : paymentReceipt ? ` · Selected: ${paymentReceipt.name}` : ''}
+										</span>
+									</label>
+									{paymentMethod === 'paypal' && (
 											<p className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-3 text-xs leading-5 text-blue-100" role="status">
 												Sign in or create an account here so your order can be saved. Then continue to PayPal to sign in or create a PayPal account and approve payment. You’ll return here after approval.
 											</p>
@@ -1853,7 +1813,7 @@ export default function App() {
 							)}
 							{guestCheckout && !user && (
 								<p className="mb-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs leading-5 text-emerald-100" role="status">
-									Guest checkout sends your request to WhatsApp and does not save it to account history. PayPal, crypto, and wallet payments require sign-in.
+									Guest checkout sends your request to WhatsApp and does not save it to account history. PayPal and wallet payments require sign-in.
 								</p>
 							)}
 							<fieldset className="mb-5 grid gap-3 rounded-xl border border-blue-300/15 p-3">
@@ -1900,25 +1860,25 @@ export default function App() {
 										</label>
 									</>
 								)}
-								<label className="grid gap-2 text-xs font-semibold text-slate-300">
+								<label className={`grid gap-2 text-xs font-semibold text-slate-300 ${isPickup ? 'hidden' : ''}`}>
 									Street address
 									<input
 										className="h-11 rounded-lg border border-[#294572] bg-[#07142e] px-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-sky-400"
 										autoComplete="street-address"
 										name="address"
 										placeholder="Street address, apartment or unit"
-										required
+										required={!isPickup}
 										value={address}
 										onChange={(event) => setAddress(event.target.value)}
 									/>
 								</label>
-								<label className="grid gap-2 text-xs font-semibold text-slate-300">
+								<label className={`grid gap-2 text-xs font-semibold text-slate-300 ${isPickup ? 'hidden' : ''}`}>
 									Country
 									<select
 										className="h-11 rounded-lg border border-[#294572] bg-[#07142e] px-3 text-sm text-white outline-none focus:border-sky-400"
 										autoComplete="country-name"
 										name="country"
-										required
+										required={!isPickup}
 										value={country}
 										onChange={(event) => setCountry(event.target.value)}
 									>
@@ -1926,31 +1886,53 @@ export default function App() {
 										{countries.map((countryName) => <option key={countryName} value={countryName}>{countryName}</option>)}
 									</select>
 								</label>
-								<label className="grid gap-2 text-xs font-semibold text-slate-300">
+								<label className={`grid gap-2 text-xs font-semibold text-slate-300 ${isPickup ? 'hidden' : ''}`}>
 									State / Parish / Province
 									<input
 										className="h-11 rounded-lg border border-[#294572] bg-[#07142e] px-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-sky-400"
 										autoComplete="address-level1"
 										name="stateRegion"
 										placeholder="State, parish or province"
-										required
+										required={!isPickup}
 										value={stateRegion}
 										onChange={(event) => setStateRegion(event.target.value)}
 									/>
 								</label>
-								<label className="grid gap-2 text-xs font-semibold text-slate-300">
+								<label className={`grid gap-2 text-xs font-semibold text-slate-300 ${isPickup ? 'hidden' : ''}`}>
 									ZIP / Postal code or PO Box
 									<input
 										className="h-11 rounded-lg border border-[#294572] bg-[#07142e] px-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-sky-400"
 										autoComplete="postal-code"
 										name="postalCode"
 										placeholder="ZIP code, postal code or PO Box"
-										required
+										required={!isPickup}
 										value={postalCode}
 										onChange={(event) => setPostalCode(event.target.value)}
 									/>
 								</label>
 							</fieldset>
+
+							{hasPhysicalDeliveryItems && (
+								<label className="mb-5 grid gap-2 text-xs font-semibold text-slate-300">
+									Delivery option
+									<select
+										className="h-11 rounded-lg border border-[#294572] bg-[#07142e] px-3 text-sm text-white outline-none focus:border-sky-400"
+										name="deliveryMethod"
+										required
+										value={deliveryMethod}
+										onChange={(event) => setDeliveryMethod(event.target.value)}
+									>
+										<option value="" disabled>Select a delivery option</option>
+										<option value="Local delivery — Sandy Bay">Local delivery — Sandy Bay</option>
+										<option value="Local delivery — Mt Pelier">Local delivery — Mt Pelier</option>
+										<option value="Local delivery — Hopewell">Local delivery — Hopewell</option>
+										<option value="Local delivery — Lucea">Local delivery — Lucea</option>
+										<option value="Local delivery — Montego Bay">Local delivery — Montego Bay</option>
+										<option value="Islandwide delivery — Knutsford Express">Islandwide delivery — Knutsford Express</option>
+									</select>
+									<span className="font-normal text-slate-500">{isPickup ? 'Pickup is free. We will confirm when your order is ready at Main Street, Sandy Bay, Hanover.' : 'Delivery fees and timing will be confirmed with you.'}</span>
+								</label>
+							)}
 
 							<label className="mb-4 grid gap-2 text-xs font-semibold text-slate-300">
 								{hasRepairs
@@ -1963,7 +1945,7 @@ export default function App() {
 									name="deviceModel"
 									placeholder={cart.some((item) => item.id === 'camera-installation' || item.id === 'camera-troubleshooting')
 										? 'Camera brand, number of cameras, or issue to troubleshoot'
-										: hasRepairs ? 'e.g. iPhone 13 Pro' : 'e.g. preferred color or storage'}
+										: hasRepairs ? 'e.g. iPhone 13 Pro' : 'e.g. preferred color or size'}
 									required={hasRepairs}
 									value={deviceModel}
 									onChange={(event) => setDeviceModel(event.target.value)}
@@ -1977,7 +1959,7 @@ export default function App() {
 								type="submit"
 								disabled={cart.length === 0 || checkoutBusy}
 							>
-								<span>{checkoutBusy ? 'Processing…' : paymentMethod === 'wallet' ? 'Pay with wallet credit' : paymentMethod === 'crypto' ? 'Submit for payment verification' : paymentMethod === 'payoneer' ? 'Request Payoneer payment link' : paymentMethod === 'wipay' ? 'Request WiPay payment instructions' : hasWholesale ? 'Send service request' : hasDevices && hasRepairs ? 'Send combined request' : hasDevices ? 'Enquire on WhatsApp' : 'Send repair request'}</span>
+								<span>{checkoutBusy ? 'Processing…' : paymentMethod === 'wallet' ? 'Pay with wallet credit' : paymentMethod === 'payoneer' ? 'Request Payoneer payment link' : paymentMethod === 'wipay' ? 'Request WiPay payment instructions' : 'Send clothing order'}</span>
 								<ArrowIcon />
 							</button>
 							{checkoutNotice && (
@@ -1986,7 +1968,7 @@ export default function App() {
 								</p>
 							)}
 							<p className="mt-3 text-center text-[11px] text-slate-500">
-								{paymentMethod === 'wallet' ? 'Wallet orders are priced and charged securely on the server.' : paymentMethod === 'crypto' ? 'Crypto orders remain pending until an administrator verifies the transaction.' : paymentMethod === 'payoneer' ? 'A current Payoneer link will be provided after you send your order request.' : paymentMethod === 'wipay' ? 'Current WiPay payment instructions will be provided after you send your order request.' : 'No payment is collected here.'}
+								{paymentMethod === 'wallet' ? 'Wallet orders are priced and charged securely on the server.' : paymentMethod === 'payoneer' ? 'A current Payoneer link will be provided after you send your order request.' : paymentMethod === 'wipay' ? 'Current WiPay payment instructions will be provided after you send your order request.' : 'No payment is collected here.'}
 							</p>
 								</div>
 							</details>
@@ -1996,25 +1978,16 @@ export default function App() {
 
 				<section className="mt-16 grid gap-8 rounded-2xl border border-blue-300/15 bg-[#091835] p-8 md:grid-cols-2">
 					<div>
-						<p className="mb-1 text-xs font-bold tracking-[.16em] text-sky-400">ABOUT US</p>
-						<h2 className="mb-4 text-2xl font-bold">Exclusive Mobile Solutions</h2>
+						<p className="mb-1 text-xs font-bold tracking-[.16em] text-sky-400">ABOUT THE BRAND</p>
+						<h2 className="mb-4 text-2xl font-bold">BrokeB4Rich</h2>
 						<p className="leading-relaxed text-slate-400">
-							We're your trusted local mobile specialists. From brand-new devices to professional repair services and software tools, we deliver comprehensive mobile solutions with expert support and competitive pricing. Device care, done right.
+							Motivational streetwear for those who stay focused on the grind. Shop signature BrokeB4Rich designs, made to help you wear your ambition.
 						</p>
 					</div>
 					<div>
 						<p className="mb-1 text-xs font-bold tracking-[.16em] text-sky-400">GET IN TOUCH</p>
 						<h3 className="mb-4 text-xl font-bold">Contact Us</h3>
 						<div className="space-y-3">
-							<div>
-								<p className="text-xs font-semibold text-slate-300">Email</p>
-								<a
-									href="mailto:info@exclusivemobilesolutions.com"
-									className="text-sm text-sky-400 transition hover:text-sky-300"
-								>
-									info@exclusivemobilesolutions.com
-								</a>
-							</div>
 							<div>
 								<p className="text-xs font-semibold text-slate-300">WhatsApp Support</p>
 								<a
@@ -2023,29 +1996,83 @@ export default function App() {
 									rel="noopener noreferrer"
 									className="text-sm text-sky-400 transition hover:text-sky-300"
 								>
-									Chat with us on WhatsApp
+									(876) 422-9560
 								</a>
 							</div>
 							<div>
-								<p className="text-xs font-semibold text-slate-300">Telegram</p>
-								<a
-									href="https://t.me/techfix_pro"
-									target="_blank"
-									rel="noopener noreferrer"
-									className="mt-2 inline-flex items-center gap-2 rounded-lg bg-[#229ED9] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#1b85b8] focus:outline-none focus:ring-2 focus:ring-sky-300"
-								>
-									<svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.7">
-										<path strokeLinecap="round" strokeLinejoin="round" d="M21.8 4.2 18.5 20c-.2 1.1-.9 1.4-1.8.9l-5-3.7-2.4 2.3c-.3.3-.5.5-1 .5l.4-5.1 9.3-8.4c.4-.4-.1-.6-.6-.2L6 13.5l-5-1.6c-1.1-.3-1.1-1.1.2-1.6L20.7 3c.9-.3 1.6.2 1.1 1.2Z" />
-									</svg>
-									Chat with us on Telegram
-								</a>
+								<p className="text-xs font-semibold text-slate-300">Business address</p>
+								<p className="text-sm text-slate-400">Main Street, Sandy Bay, Hanover, Jamaica</p>
+							</div>
+							<div>
+								<p className="text-xs font-semibold text-slate-300">Telephone</p>
+								<a className="text-sm text-sky-400 transition hover:text-sky-300" href="tel:+18764229560">(876) 422-9560</a>
 							</div>
 						</div>
 					</div>
 				</section>
 
+				<section className="mt-10 grid gap-8 rounded-2xl border border-blue-300/15 bg-[#091835] p-6 sm:p-8 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]" aria-labelledby="reviews-title">
+					<div>
+						<p className="mb-1 text-xs font-bold tracking-[.16em] text-sky-400">COMMUNITY</p>
+						<h2 className="text-2xl font-bold" id="reviews-title">Customer reviews</h2>
+						<p className="mt-2 text-sm leading-6 text-slate-400">Share your experience. Submitted reviews are published publicly on this page.</p>
+						<form className="mt-5 grid gap-3" onSubmit={submitReview}>
+							<label className="grid gap-1.5 text-xs font-semibold text-slate-300">
+								Your name
+								<input className="h-10 rounded-lg border border-[#294572] bg-[#07142e] px-3 text-sm text-white outline-none focus:border-sky-400" autoComplete="name" maxLength={80} minLength={2} required value={reviewName} onChange={(event) => setReviewName(event.target.value)} />
+							</label>
+							<label className="grid gap-1.5 text-xs font-semibold text-slate-300">
+								Rating
+								<select className="h-10 rounded-lg border border-[#294572] bg-[#07142e] px-3 text-sm text-white outline-none focus:border-sky-400" value={reviewRating} onChange={(event) => setReviewRating(event.target.value)}>
+									<option value="5">5 stars</option>
+									<option value="4">4 stars</option>
+									<option value="3">3 stars</option>
+									<option value="2">2 stars</option>
+									<option value="1">1 star</option>
+								</select>
+							</label>
+							<label className="grid gap-1.5 text-xs font-semibold text-slate-300">
+								Your review
+								<textarea className="min-h-24 resize-y rounded-lg border border-[#294572] bg-[#07142e] px-3 py-2 text-sm text-white outline-none focus:border-sky-400" maxLength={1000} minLength={10} required value={reviewText} onChange={(event) => setReviewText(event.target.value)} />
+							</label>
+							<label className="flex items-start gap-2 text-xs leading-5 text-slate-400">
+								<input className="mt-1 accent-sky-400" type="checkbox" required />
+								I understand my name, rating, and review will be visible publicly.
+							</label>
+							<button className="min-h-10 rounded-lg bg-sky-500 px-4 text-sm font-bold text-[#03142a] transition hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-50" type="submit" disabled={reviewSubmitting || !supabase}>
+								{reviewSubmitting ? 'Submitting…' : 'Submit public review'}
+							</button>
+							{!supabase && <p className="text-xs text-amber-200">Reviews will be available once the store database is configured.</p>}
+							{reviewNotice && <p className="text-xs leading-5 text-sky-200" role="status">{reviewNotice}</p>}
+						</form>
+					</div>
+					<div aria-live="polite">
+						<h3 className="font-semibold text-slate-100">What customers are saying</h3>
+						{reviewLoading ? (
+							<p className="mt-4 text-sm text-slate-400">Loading reviews…</p>
+						) : reviews.length ? (
+							<ul className="mt-3 max-h-[32rem] space-y-3 overflow-y-auto">
+								{reviews.map((review) => (
+									<li className="rounded-xl border border-[#294572] bg-[#07142e] p-4" key={review.id}>
+										<div className="flex flex-wrap items-center justify-between gap-2">
+											<p className="font-semibold text-slate-100">{review.customer_name}</p>
+											<span className="text-amber-300" aria-label={`${review.rating} out of 5 stars`}>{'★'.repeat(review.rating)}{'☆'.repeat(5 - review.rating)}</span>
+										</div>
+										<p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-300">{review.review}</p>
+										<time className="mt-2 block text-xs text-slate-500" dateTime={review.created_at}>{new Date(review.created_at).toLocaleDateString()}</time>
+									</li>
+								))}
+							</ul>
+						) : (
+							<p className="mt-4 rounded-xl border border-[#294572] bg-[#07142e] p-4 text-sm text-slate-400">
+								{reviewNotice.startsWith('Could not load') ? 'Reviews are temporarily unavailable.' : 'No reviews yet. Be the first to share your experience.'}
+							</p>
+						)}
+					</div>
+				</section>
+
 				<footer className="pt-16 text-center text-[10px] font-bold tracking-[.16em] text-slate-600">
-					EXCLUSIVE MOBILE SOLUTIONS <span className="px-2 text-sky-400">·</span> DEVICE CARE, DONE RIGHT
+					BROKEB4RICH <span className="px-2 text-sky-400">·</span> SANDY BAY, HANOVER, JAMAICA
 				</footer>
 			</div>
 			<a
@@ -2058,18 +2085,6 @@ export default function App() {
 			>
 				<svg aria-hidden="true" className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
 					<path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z" />
-				</svg>
-			</a>
-			<a
-				href="https://t.me/techfix_pro"
-				target="_blank"
-				rel="noopener noreferrer"
-				className="fixed bottom-5 right-5 z-50 grid h-14 w-14 place-items-center rounded-full bg-[#229ED9] text-white shadow-xl transition hover:scale-105 hover:bg-[#1b85b8] focus:outline-none focus:ring-2 focus:ring-sky-300 focus:ring-offset-2 focus:ring-offset-[#050d22]"
-				aria-label="Chat with support on Telegram"
-				title="Chat with support on Telegram"
-			>
-				<svg aria-hidden="true" className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
-					<path d="M21.8 4.2 18.5 20c-.2 1.1-.9 1.4-1.8.9l-5-3.7-2.4 2.3c-.3.3-.5.5-1 .5l.4-5.1 9.3-8.4c.4-.4-.1-.6-.6-.2L6 13.5l-5-1.6c-1.1-.3-1.1-1.1.2-1.6L20.7 3c.9-.3 1.6.2 1.1 1.2Z" />
 				</svg>
 			</a>
 		</main>
