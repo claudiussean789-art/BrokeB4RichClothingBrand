@@ -10,6 +10,7 @@ import {
 	type WalletTopup,
 	type WalletTransaction,
 } from '../lib/supabase';
+import { OrderStatusBadge } from './TrackOrder';
 
 type AccountPanelProps = {
 	user: User | null;
@@ -38,6 +39,10 @@ export default function AccountPanel({
 	notice,
 }: AccountPanelProps) {
 	const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
+	const [authMethod, setAuthMethod] = useState<'email' | 'phone'>('email');
+	const [phoneLogin, setPhoneLogin] = useState('');
+	const [otpCode, setOtpCode] = useState('');
+	const [otpSent, setOtpSent] = useState(false);
 	const [fullName, setFullName] = useState('');
 	const [username, setUsername] = useState('');
 	const [phone, setPhone] = useState('');
@@ -76,7 +81,7 @@ export default function AccountPanel({
 		void Promise.all([
 			client.from('profiles').select('id,email,full_name,username,phone,address,credit_balance').eq('id', user.id).single(),
 			client.from('wallet_topups').select('id,amount,currency,method,status,receipt_path,created_at').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20),
-			client.from('wallet_orders').select('id,items,total,currency,payment_method,status,payment_reference,crypto_txid,created_at').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20),
+			client.from('wallet_orders').select('id,items,total,currency,payment_method,status,payment_reference,crypto_txid,fulfillment_status,tracking_number,created_at').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20),
 			client.from('wallet_transactions').select('id,amount,kind,description,created_at').eq('user_id', user.id).order('created_at', { ascending: false }).limit(30),
 		]).then(([profileResult, topupResult, orderResult, transactionResult]) => {
 			const failure = profileResult.error ?? topupResult.error ?? orderResult.error ?? transactionResult.error;
@@ -96,6 +101,51 @@ export default function AccountPanel({
 
 		return () => { active = false; };
 	}, [user, onBalanceChange]);
+
+	const handleGoogle = async () => {
+		setBusy(true);
+		setErrorMessage('');
+		const { error } = await getSupabase().auth.signInWithOAuth({
+			provider: 'google',
+			options: { redirectTo: window.location.origin },
+		});
+		if (error) {
+			setErrorMessage(displayError(error));
+			setBusy(false);
+		}
+	};
+
+	const handlePhoneAuth = async (event: FormEvent<HTMLFormElement>) => {
+		event.preventDefault();
+		setBusy(true);
+		setErrorMessage('');
+		setSuccessMessage('');
+		try {
+			const client = getSupabase();
+			const normalizedPhone = phoneLogin.replace(/[\s()-]/g, '');
+			if (!/^\+[1-9]\d{7,14}$/.test(normalizedPhone)) {
+				throw new Error('Enter your phone number with country code, e.g. +18764229560.');
+			}
+			if (!otpSent) {
+				const { error } = await client.auth.signInWithOtp({
+					phone: normalizedPhone,
+					options: { data: { full_name: fullName.trim() } },
+				});
+				if (error) throw error;
+				setOtpSent(true);
+				setSuccessMessage('We texted you a 6-digit code. Enter it below.');
+			} else {
+				const { data, error } = await client.auth.verifyOtp({ phone: normalizedPhone, token: otpCode.trim(), type: 'sms' });
+				if (error) throw error;
+				if (data.user) onUserChange(data.user);
+				setOtpCode('');
+			}
+		} catch (phoneError) {
+			setErrorMessage(displayError(phoneError));
+		} finally {
+			setBusy(false);
+		}
+	};
 
 	const handleAuth = async (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault();
@@ -152,7 +202,7 @@ export default function AccountPanel({
 		const [profileResult, topupResult, orderResult, transactionResult] = await Promise.all([
 			client.from('profiles').select('id,email,full_name,username,phone,address,credit_balance').eq('id', user.id).single(),
 			client.from('wallet_topups').select('id,amount,currency,method,status,receipt_path,created_at').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20),
-			client.from('wallet_orders').select('id,items,total,currency,payment_method,status,payment_reference,crypto_txid,created_at').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20),
+			client.from('wallet_orders').select('id,items,total,currency,payment_method,status,payment_reference,crypto_txid,fulfillment_status,tracking_number,created_at').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20),
 			client.from('wallet_transactions').select('id,amount,kind,description,created_at').eq('user_id', user.id).order('created_at', { ascending: false }).limit(30),
 		]);
 		const failure = profileResult.error ?? topupResult.error ?? orderResult.error ?? transactionResult.error;
@@ -311,6 +361,41 @@ try {
 								</button>
 							))}
 						</div>
+						<div className="mb-4 grid gap-2">
+							<button className="min-h-11 rounded-lg border border-[#294572] bg-white px-4 text-sm font-bold text-slate-800 hover:bg-slate-100 disabled:opacity-50" type="button" disabled={busy} onClick={() => void handleGoogle()}>
+								Continue with Google
+							</button>
+							<div className="flex gap-2 rounded-xl border border-blue-300/15 bg-[#07142e] p-1">
+								{(['email', 'phone'] as const).map((method) => (
+									<button className={`min-h-9 flex-1 rounded-lg text-xs font-semibold ${authMethod === method ? 'bg-sky-500 text-[#03142a]' : 'text-slate-300 hover:bg-white/5'}`} type="button" key={method} onClick={() => { setAuthMethod(method); setErrorMessage(''); setSuccessMessage(''); }}>
+										{method === 'email' ? 'Email' : 'Phone number'}
+									</button>
+								))}
+							</div>
+						</div>
+						{authMethod === 'phone' ? (
+							<form className="grid gap-4" onSubmit={handlePhoneAuth}>
+								<p className="text-xs leading-5 text-slate-400">Sign in or create an account with a text-message code. New numbers get an account automatically.</p>
+								<label className="grid gap-2 text-xs font-semibold text-slate-300">
+									Phone number (with country code)
+									<input className="h-11 rounded-lg border border-[#294572] bg-[#07142e] px-3 text-sm text-white outline-none focus:border-sky-400" type="tel" autoComplete="tel" placeholder="+1 876 555 0123" required disabled={otpSent} value={phoneLogin} onChange={(event) => setPhoneLogin(event.target.value)} />
+								</label>
+								{otpSent && (
+									<label className="grid gap-2 text-xs font-semibold text-slate-300">
+										6-digit code
+										<input className="h-11 rounded-lg border border-[#294572] bg-[#07142e] px-3 text-sm text-white outline-none focus:border-sky-400" inputMode="numeric" autoComplete="one-time-code" maxLength={6} required value={otpCode} onChange={(event) => setOtpCode(event.target.value)} />
+									</label>
+								)}
+								<button className="min-h-11 rounded-lg bg-sky-500 px-4 text-sm font-bold text-[#03142a] hover:bg-sky-300 disabled:opacity-50" type="submit" disabled={busy}>
+									{busy ? 'Please wait…' : otpSent ? 'Verify code' : 'Text me a code'}
+								</button>
+								{otpSent && (
+									<button className="text-left text-xs font-semibold text-sky-300 hover:underline" type="button" onClick={() => { setOtpSent(false); setOtpCode(''); setSuccessMessage(''); }}>
+										Use a different number
+									</button>
+								)}
+							</form>
+						) : (
 						<form className="grid gap-4" onSubmit={handleAuth}>
 							{authMode === 'signup' && (
 								<>
@@ -345,6 +430,7 @@ try {
 								{busy ? 'Please wait…' : authMode === 'signin' ? 'Sign in' : 'Create account'}
 							</button>
 						</form>
+						)}
 					</div>
 				) : (
 					<div className="grid gap-6">
@@ -439,8 +525,9 @@ try {
 								{orders.length ? <ul className="grid gap-2">
 									{orders.map((order) => (
 										<li className="rounded-lg border border-blue-300/10 bg-[#07142e] p-3 text-sm" key={order.id}>
-											<div className="flex justify-between gap-3"><strong>{order.total === null ? 'Price to be confirmed' : currency(order.total, order.currency)}</strong><span className="text-xs capitalize text-slate-400">{order.status.replace(/_/g, ' ')} · {order.payment_method}</span></div>
+											<div className="flex justify-between gap-3"><strong>{order.total === null ? 'Price to be confirmed' : currency(order.total, order.currency)}</strong><span className="flex items-center gap-2 text-xs capitalize text-slate-400"><OrderStatusBadge trackingNumber={order.tracking_number} fulfillmentStatus={order.fulfillment_status} /> {order.payment_method}</span></div>
 											<p className="mt-2 text-xs leading-5 text-slate-400">{Array.isArray(order.items) ? order.items.map((item) => item.name).join(', ') : 'Order items'} · {dateTime(order.created_at)}</p>
+											{order.tracking_number && <p className="mt-1 text-xs text-slate-300">Knutsford Express tracking no.: <strong>{order.tracking_number}</strong></p>}
 											{order.crypto_txid && <p className="mt-1 break-all text-xs text-slate-500">TXID: {order.crypto_txid}</p>}
 										</li>
 									))}

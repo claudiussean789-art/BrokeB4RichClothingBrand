@@ -56,8 +56,17 @@ export type WalletOrder = {
 	status: 'paid' | 'requested' | 'pending' | 'pending_verification' | 'cancelled';
 	payment_reference: string | null;
 	crypto_txid: string | null;
+	fulfillment_status?: string | null;
+	tracking_number?: string | null;
 	created_at: string;
 };
+
+export function orderDisplayStatus(trackingNumber?: string | null, fulfillmentStatus?: string | null): 'processing' | 'shipped' | 'completed' | 'cancelled' {
+	if (fulfillmentStatus === 'failed') return 'cancelled';
+	if (trackingNumber?.trim()) return 'shipped';
+	if (fulfillmentStatus === 'completed') return 'completed';
+	return 'processing';
+}
 
 export type WalletTransaction = {
 	id: string;

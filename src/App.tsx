@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import type { User } from '@supabase/supabase-js';
 import AccountPanel from './components/AccountPanel';
+import TrackOrder from './components/TrackOrder';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
 import { wholesaleServices } from './data/wholesaleServices';
 
@@ -420,6 +421,16 @@ export default function App() {
 	const [paymentReceiptReference, setPaymentReceiptReference] = useState<string | null>(null);
 	const [deliveryMethod, setDeliveryMethod] = useState('');
 	const isPickup = deliveryMethod.startsWith('In-store pickup');
+	useEffect(() => {
+		if (!supabase) return;
+		let visitorId = localStorage.getItem('b4r_visitor_id');
+		if (!visitorId) {
+			visitorId = crypto.randomUUID();
+			localStorage.setItem('b4r_visitor_id', visitorId);
+		}
+		void supabase.rpc('record_site_visit', { p_visitor_id: visitorId, p_path: window.location.pathname });
+	}, []);
+	const [customerInfoOpen, setCustomerInfoOpen] = useState(true);
 	const [address, setAddress] = useState('');
 	const [country, setCountry] = useState('');
 	const [stateRegion, setStateRegion] = useState('');
@@ -993,42 +1004,43 @@ export default function App() {
 			`https://wa.me/${whatsappNumber}?text=${encodeURIComponent(messageLines.join('\n'))}`;
 		window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
 
-		if (user && supabase) {
+		if (supabase) {
 			setCheckoutBusy(true);
 			try {
-				const { error } = await supabase.rpc('create_order_request', {
+				const { error } = await supabase.rpc('create_guest_order', {
 					p_items: cart.map((item) => ({
-		id: item.id,
-		kind: item.kind,
-		name: item.name,
-		identifier: item.identifier ?? null,
+						id: item.id,
+						kind: item.kind,
+						name: item.name,
+						unit_price: item.price,
 					})),
 					p_customer: {
-		full_name: customerName.trim(),
-		email: customerEmail.trim() || user.email || '',
-		phone: customerPhone.trim(),
-		address: address.trim(),
-		country,
-		state_region: stateRegion.trim(),
-		postal_code: postalCode.trim(),
-		delivery_method: deliveryMethod,
-		device_model: deviceModel.trim(),
-		receipt_reference: receiptReference,
-		},
+						full_name: customerName.trim(),
+						email: customerEmail.trim() || user?.email || '',
+						phone: customerPhone.trim(),
+						address: address.trim(),
+						country,
+						state_region: stateRegion.trim(),
+						postal_code: postalCode.trim(),
+						delivery_method: deliveryMethod,
+						device_model: deviceModel.trim(),
+						receipt_reference: receiptReference,
+					},
 					p_payment_method: paymentMethod,
 				});
 				if (error) throw error;
-				setCheckoutNotice('Your order request was saved to account history and sent to WhatsApp.');
+				setCheckoutNotice(user
+					? 'Your order was saved to your account and sent to WhatsApp. Status: Processing.'
+					: 'Your order was sent to WhatsApp and saved. Status: Processing. Use "Track your order" with your email and phone to see updates.');
 				setAccountRefreshKey((key) => key + 1);
 			} catch (error) {
 				setCheckoutNotice(error instanceof Error
-					? `WhatsApp opened, but the order could not be saved to account history: ${error.message}`
-					: 'WhatsApp opened, but the order could not be saved to account history.');
+					? `WhatsApp opened, but the order could not be saved: ${error.message}`
+					: 'WhatsApp opened, but the order could not be saved.');
 			} finally {
 				setCheckoutBusy(false);
 			}
-		}
-	};
+		}	};
 
 	return (
 		<main className="min-h-screen bg-[#050d22] text-[#f4f7fc]">
@@ -1063,6 +1075,7 @@ export default function App() {
 							<a className="rounded-lg px-4 py-3 text-sm font-medium text-slate-200 hover:bg-white/5 hover:text-sky-300" href="#top" onClick={() => setNavigationOpen(false)}>Home</a>
 							<a className="rounded-lg px-4 py-3 text-sm font-medium text-slate-200 hover:bg-white/5 hover:text-sky-300" href="#checkout-summary" onClick={() => setNavigationOpen(false)}>Shopping Cart &amp; Place Order</a>
 							<a className="rounded-lg px-4 py-3 text-sm font-medium text-sky-200 hover:bg-white/5 hover:text-sky-100" href="#catalog-title" aria-current="page" onClick={() => setNavigationOpen(false)}>Products &amp; Services</a>
+							<a className="rounded-lg px-4 py-3 text-sm font-medium text-slate-200 hover:bg-white/5 hover:text-sky-300" href="#track-order" onClick={() => setNavigationOpen(false)}>Track My Order</a>
 							<a className="rounded-lg px-4 py-3 text-sm font-medium text-slate-200 hover:bg-white/5 hover:text-sky-300" href="#reviews-title" onClick={() => setNavigationOpen(false)}>Customer Reviews</a>
 							<button
 								className="rounded-lg px-4 py-3 text-left text-sm font-medium text-slate-200 hover:bg-white/5 hover:text-sky-300"
@@ -1813,11 +1826,12 @@ export default function App() {
 							)}
 							{guestCheckout && !user && (
 								<p className="mb-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs leading-5 text-emerald-100" role="status">
-									Guest checkout sends your request to WhatsApp and does not save it to account history. PayPal and wallet payments require sign-in.
+									Guest checkout sends your request to WhatsApp and saves it so you can track it with your email and phone. PayPal and wallet payments require sign-in.
 								</p>
 							)}
-							<fieldset className="mb-5 grid gap-3 rounded-xl border border-blue-300/15 p-3">
-								<legend className="px-1 text-sm font-bold text-slate-100">Customer information</legend>
+							<details className="group mb-5 rounded-xl border border-blue-300/15" open={customerInfoOpen} onToggle={(event) => setCustomerInfoOpen(event.currentTarget.open)}>
+								<summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-bold text-slate-100">Customer information<span className="text-sky-300 transition group-open:rotate-180" aria-hidden="true">▾</span></summary>
+								<fieldset className="grid gap-3 p-3 pt-0" onInvalidCapture={() => setCustomerInfoOpen(true)}>
 								<label className="grid gap-2 text-xs font-semibold text-slate-300">
 									Full name
 									<input
@@ -1830,10 +1844,10 @@ export default function App() {
 										onChange={(event) => setCustomerName(event.target.value)}
 									/>
 								</label>
-								{paymentMethod === 'payoneer' && (
+								{(
 									<>
 										<label className="grid gap-2 text-xs font-semibold text-slate-300">
-											Email address for Payoneer
+											Email address
 											<input
 												className="h-11 rounded-lg border border-[#294572] bg-[#07142e] px-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-sky-400"
 												autoComplete="email"
@@ -1846,7 +1860,7 @@ export default function App() {
 											/>
 										</label>
 										<label className="grid gap-2 text-xs font-semibold text-slate-300">
-											Phone number for Payoneer
+											Phone number
 											<input
 												className="h-11 rounded-lg border border-[#294572] bg-[#07142e] px-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-sky-400"
 												autoComplete="tel"
@@ -1911,6 +1925,7 @@ export default function App() {
 									/>
 								</label>
 							</fieldset>
+							</details>
 
 							{hasPhysicalDeliveryItems && (
 								<label className="mb-5 grid gap-2 text-xs font-semibold text-slate-300">
@@ -1975,6 +1990,8 @@ export default function App() {
 						</aside>
 					</div>
 				</form>
+
+				<TrackOrder />
 
 				<section className="mt-16 grid gap-8 rounded-2xl border border-blue-300/15 bg-[#091835] p-8 md:grid-cols-2">
 					<div>

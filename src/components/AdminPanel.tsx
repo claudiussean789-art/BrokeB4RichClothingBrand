@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 
 export type OrderFulfillmentStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
@@ -34,8 +34,25 @@ type AdminOrder = {
 	fulfillment_status?: string | null;
 	payment_reference?: string | null;
 	crypto_txid?: string | null;
+	tracking_number?: string | null;
+	tracking_updated_at?: string | null;
 	created_at: string;
 };
+
+type SiteStats = {
+	visits_total: number;
+	visits_today: number;
+	visits_7d: number;
+	visitors_total: number;
+	visitors_7d: number;
+	customers_total: number;
+	customers_7d: number;
+	orders_total: number;
+	revenue_total: number;
+};
+
+const ADMIN_EMAIL = 'champoohdarkshade@gmail.com';
+const knutsfordTrackingUrl = 'https://www.knutsfordexpress.com/';
 
 type AdminPanelProps = {
 	onBackToStore?: () => void;
@@ -118,6 +135,14 @@ export default function AdminPanel({ onBackToStore }: AdminPanelProps) {
 	const [statusFilter, setStatusFilter] = useState<'all' | OrderFulfillmentStatus>('all');
 	const [searchQuery, setSearchQuery] = useState('');
 	const [signedIn, setSignedIn] = useState<boolean | null>(null);
+	const [stats, setStats] = useState<SiteStats | null>(null);
+	const [loginEmail, setLoginEmail] = useState(ADMIN_EMAIL);
+	const [loginPassword, setLoginPassword] = useState('');
+	const [recoveryMode, setRecoveryMode] = useState(false);
+	const [newPassword, setNewPassword] = useState('');
+	const [authBusy, setAuthBusy] = useState(false);
+	const [trackingDrafts, setTrackingDrafts] = useState<Record<string, string>>({});
+	const [reloadKey, setReloadKey] = useState(0);
 
 	const loadOrders = useCallback(async () => {
 		if (!supabase) {
@@ -135,6 +160,8 @@ export default function AdminPanel({ onBackToStore }: AdminPanelProps) {
 		const listed = await supabase.rpc('admin_list_orders');
 		if (!listed.error) {
 			setOrders((listed.data as AdminOrder[]) ?? []);
+			const siteStats = await supabase.rpc('admin_site_stats');
+			setStats(siteStats.error ? null : (siteStats.data as SiteStats));
 			return;
 		}
 		if (/admin access required|sign in required/i.test(listed.error.message)) {
@@ -184,7 +211,86 @@ export default function AdminPanel({ onBackToStore }: AdminPanelProps) {
 		return () => {
 			active = false;
 		};
-	}, [loadOrders]);
+	}, [loadOrders, reloadKey]);
+
+	useEffect(() => {
+		if (!supabase) return;
+		const { data } = supabase.auth.onAuthStateChange((event) => {
+			if (event === 'PASSWORD_RECOVERY') setRecoveryMode(true);
+		});
+		return () => data.subscription.unsubscribe();
+	}, []);
+
+	const signIn = async (event: FormEvent) => {
+		event.preventDefault();
+		if (!supabase) return;
+		setAuthBusy(true);
+		setErrorMessage('');
+		setNotice('');
+		const { error } = await supabase.auth.signInWithPassword({ email: loginEmail.trim(), password: loginPassword });
+		setAuthBusy(false);
+		if (error) {
+			setErrorMessage(error.message);
+			return;
+		}
+		setLoginPassword('');
+		setReloadKey((key) => key + 1);
+	};
+
+	const sendReset = async () => {
+		if (!supabase) return;
+		setAuthBusy(true);
+		setErrorMessage('');
+		setNotice('');
+		const { error } = await supabase.auth.resetPasswordForEmail(ADMIN_EMAIL, { redirectTo: `${window.location.origin}/admin` });
+		setAuthBusy(false);
+		if (error) setErrorMessage(error.message);
+		else setNotice(`A password reset link was sent to ${ADMIN_EMAIL}.`);
+	};
+
+	const saveNewPassword = async (event: FormEvent) => {
+		event.preventDefault();
+		if (!supabase) return;
+		setAuthBusy(true);
+		setErrorMessage('');
+		const { error } = await supabase.auth.updateUser({ password: newPassword });
+		setAuthBusy(false);
+		if (error) {
+			setErrorMessage(error.message);
+			return;
+		}
+		setNewPassword('');
+		setRecoveryMode(false);
+		setNotice('Password updated.');
+		setReloadKey((key) => key + 1);
+	};
+
+	const signOut = async () => {
+		if (!supabase) return;
+		await supabase.auth.signOut();
+		setOrders([]);
+		setStats(null);
+		setReloadKey((key) => key + 1);
+	};
+
+	const saveTracking = async (orderId: string) => {
+		if (!supabase) return;
+		setUpdatingId(orderId);
+		setErrorMessage('');
+		setNotice('');
+		const { data, error } = await supabase.rpc('admin_set_order_tracking', {
+			p_order_id: orderId,
+			p_tracking_number: trackingDrafts[orderId] ?? '',
+		});
+		setUpdatingId(null);
+		if (error) {
+			setErrorMessage(error.message);
+			return;
+		}
+		const updated = data as AdminOrder;
+		setOrders((current) => current.map((order) => (order.id === orderId ? { ...order, ...updated } : order)));
+		setNotice(`Tracking saved for order ${orderId.slice(0, 8)}.`);
+	};
 
 	const updateStatus = async (orderId: string, nextStatus: OrderFulfillmentStatus) => {
 		if (!supabase) return;
@@ -278,6 +384,12 @@ export default function AdminPanel({ onBackToStore }: AdminPanelProps) {
 						<p className="text-[11px] font-bold uppercase tracking-[.18em] text-sky-300">Operations</p>
 						<h1 className="font-['Barlow_Condensed',sans-serif] text-2xl font-extrabold tracking-wide">Admin order control</h1>
 					</div>
+					<div className="flex gap-2">
+						{signedIn && (
+							<button className="min-h-10 rounded-lg border border-sky-700 px-3 text-xs font-bold text-sky-200 hover:border-sky-400 sm:px-4 sm:text-sm" type="button" onClick={() => void signOut()}>
+								Sign out
+							</button>
+						)}
 					<button
 						className="min-h-10 rounded-lg border border-sky-700 px-3 text-xs font-bold text-sky-200 transition hover:border-sky-400 hover:bg-sky-950/50 sm:px-4 sm:text-sm"
 						type="button"
@@ -288,6 +400,7 @@ export default function AdminPanel({ onBackToStore }: AdminPanelProps) {
 					>
 						Back to store
 					</button>
+					</div>
 				</div>
 			</header>
 
@@ -352,12 +465,71 @@ export default function AdminPanel({ onBackToStore }: AdminPanelProps) {
 
 				{errorMessage && <p className="rounded-lg bg-rose-950/50 p-3 text-sm text-rose-100" role="alert">{errorMessage}</p>}
 				{notice && <p className="rounded-lg bg-emerald-950/40 p-3 text-sm text-emerald-100" role="status">{notice}</p>}
-				{signedIn === false && (
-					<p className="rounded-lg border border-amber-500/30 bg-amber-950/30 p-3 text-sm text-amber-100">
-						Sign in from the store, then return to /admin. Listing all customer orders also requires an admin profile (`is_admin = true`) after applying the admin orders migration.
-					</p>
+				{recoveryMode && (
+					<form className="grid max-w-md gap-3 rounded-xl border border-blue-300/15 bg-[#07142e] p-4" onSubmit={saveNewPassword}>
+						<p className="text-sm font-semibold">Choose a new admin password</p>
+						<input
+							className="min-h-10 rounded-lg border border-blue-300/20 bg-[#050d22] px-3 text-sm outline-none focus:border-sky-400"
+							type="password"
+							autoComplete="new-password"
+							minLength={8}
+							required
+							value={newPassword}
+							onChange={(event) => setNewPassword(event.target.value)}
+							placeholder="New password (8+ characters)"
+						/>
+						<button className="min-h-10 rounded-lg bg-sky-500 px-4 text-sm font-bold text-[#03142a] disabled:opacity-60" type="submit" disabled={authBusy}>Save password</button>
+					</form>
+				)}
+				{signedIn === false && !recoveryMode && (
+					<form className="grid max-w-md gap-3 rounded-xl border border-blue-300/15 bg-[#07142e] p-4" onSubmit={signIn}>
+						<p className="text-sm font-semibold">Admin sign in</p>
+						<input
+							className="min-h-10 rounded-lg border border-blue-300/20 bg-[#050d22] px-3 text-sm outline-none focus:border-sky-400"
+							type="email"
+							autoComplete="username"
+							required
+							value={loginEmail}
+							onChange={(event) => setLoginEmail(event.target.value)}
+							placeholder="Admin email"
+						/>
+						<input
+							className="min-h-10 rounded-lg border border-blue-300/20 bg-[#050d22] px-3 text-sm outline-none focus:border-sky-400"
+							type="password"
+							autoComplete="current-password"
+							required
+							value={loginPassword}
+							onChange={(event) => setLoginPassword(event.target.value)}
+							placeholder="Password"
+						/>
+						<button className="min-h-10 rounded-lg bg-sky-500 px-4 text-sm font-bold text-[#03142a] disabled:opacity-60" type="submit" disabled={authBusy}>Sign in</button>
+						<button className="text-left text-xs font-semibold text-sky-300 hover:underline" type="button" disabled={authBusy} onClick={() => void sendReset()}>
+							Forgot password? Email a reset link to the admin address
+						</button>
+					</form>
 				)}
 
+				{signedIn && !recoveryMode && stats && (
+					<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+						{[
+							{ label: 'Visitors (7 days)', value: stats.visitors_7d },
+							{ label: 'Unique visitors (all)', value: stats.visitors_total },
+							{ label: 'Page views today', value: stats.visits_today },
+							{ label: 'Page views (7 days)', value: stats.visits_7d },
+							{ label: 'Customers', value: stats.customers_total },
+							{ label: 'New customers (7 days)', value: stats.customers_7d },
+							{ label: 'Orders', value: stats.orders_total },
+							{ label: 'Revenue', value: currency(stats.revenue_total) },
+						].map((card) => (
+							<div key={card.label} className="rounded-xl border border-blue-300/15 bg-[#07142e] p-4">
+								<p className="text-xs uppercase tracking-wide text-slate-400">{card.label}</p>
+								<p className="mt-1 text-2xl font-bold">{card.value}</p>
+							</div>
+						))}
+					</div>
+				)}
+
+				{signedIn && !recoveryMode && (
 				<div className="overflow-x-auto rounded-xl border border-blue-300/15 bg-[#07142e]">
 					<table className="min-w-full text-left text-sm">
 						<thead className="border-b border-blue-300/15 text-xs uppercase tracking-wide text-slate-400">
@@ -368,6 +540,7 @@ export default function AdminPanel({ onBackToStore }: AdminPanelProps) {
 								<th className="px-4 py-3 font-medium">Amount</th>
 								<th className="px-4 py-3 font-medium">Payment</th>
 								<th className="px-4 py-3 font-medium">Status</th>
+								<th className="px-4 py-3 font-medium">Knutsford tracking</th>
 							</tr>
 						</thead>
 						<tbody>
@@ -435,6 +608,30 @@ export default function AdminPanel({ onBackToStore }: AdminPanelProps) {
 													))}
 												</select>
 											</td>
+											<td className="px-4 py-3">
+												<div className="flex gap-2">
+													<input
+														className="min-h-10 w-36 rounded-lg border border-blue-300/20 bg-[#050d22] px-2 text-sm outline-none focus:border-sky-400"
+														value={trackingDrafts[order.id] ?? order.tracking_number ?? ''}
+														onChange={(event) => setTrackingDrafts((current) => ({ ...current, [order.id]: event.target.value }))}
+														placeholder="Tracking no."
+														aria-label={`Tracking number for order ${order.id.slice(0, 8)}`}
+													/>
+													<button
+														className="min-h-10 rounded-lg bg-sky-500 px-3 text-xs font-bold text-[#03142a] disabled:opacity-60"
+														type="button"
+														disabled={updatingId === order.id}
+														onClick={() => void saveTracking(order.id)}
+													>
+														Save
+													</button>
+												</div>
+												{order.tracking_number && (
+													<a className="mt-1 inline-block text-xs text-sky-300 hover:underline" href={knutsfordTrackingUrl} target="_blank" rel="noreferrer">
+														Track on Knutsford Express
+													</a>
+												)}
+											</td>
 										</tr>
 									);
 								})
@@ -442,6 +639,7 @@ export default function AdminPanel({ onBackToStore }: AdminPanelProps) {
 						</tbody>
 					</table>
 				</div>
+				)}
 			</section>
 		</main>
 	);
