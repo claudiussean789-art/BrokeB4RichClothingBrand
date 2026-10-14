@@ -112,8 +112,8 @@ begin
   if p_visitor_id is null or char_length(p_visitor_id) not between 8 and 64 then
     return;
   end if;
-  insert into public.site_visits (visitor_id, path)
-  values (p_visitor_id, left(coalesce(p_path, '/'), 200));
+  insert into public.site_visits (visitor_id, path, user_id)
+  values (p_visitor_id, left(coalesce(p_path, '/'), 200), auth.uid());
 end;
 $$;
 
@@ -151,3 +151,115 @@ revoke all on function public.record_site_visit(text, text) from public;
 grant execute on function public.admin_set_order_tracking(uuid, text) to authenticated;
 grant execute on function public.admin_site_stats() to authenticated;
 grant execute on function public.record_site_visit(text, text) to anon, authenticated;
+
+-- Link visits to signed-in customers when known.
+alter table public.site_visits
+  add column if not exists user_id uuid references auth.users (id) on delete set null,
+  add column if not exists referrer text check (char_length(referrer) <= 500);
+
+create index if not exists site_visits_user_id_idx on public.site_visits (user_id);
+
+drop policy if exists "Admins read site visits" on public.site_visits;
+create policy "Admins read site visits" on public.site_visits
+  for select to authenticated using (public.is_store_admin());
+
+-- Daily store performance snapshot.
+create table if not exists public.store_daily_metrics (
+  day date primary key,
+  visits integer not null default 0,
+  unique_visitors integer not null default 0,
+  new_customers integer not null default 0,
+  orders integer not null default 0,
+  revenue numeric(12, 2) not null default 0,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.store_daily_metrics enable row level security;
+
+drop policy if exists "Admins read daily metrics" on public.store_daily_metrics;
+create policy "Admins read daily metrics" on public.store_daily_metrics
+  for select to authenticated using (public.is_store_admin());
+
+create or replace function public.refresh_store_daily_metrics(p_day date default current_date)
+returns public.store_daily_metrics
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_row public.store_daily_metrics;
+begin
+  if not public.is_store_admin() then
+    raise exception 'Admin access required.';
+  end if;
+  insert into public.store_daily_metrics (day, visits, unique_visitors, new_customers, orders, revenue, updated_at)
+  values (
+    p_day,
+    (select count(*) from public.site_visits where created_at::date = p_day),
+    (select count(distinct visitor_id) from public.site_visits where created_at::date = p_day),
+    (select count(*) from public.profiles where created_at::date = p_day),
+    (select count(*) from public.wallet_orders where created_at::date = p_day),
+    (select coalesce(sum(total), 0) from public.wallet_orders where created_at::date = p_day and status <> 'cancelled'),
+    now()
+  )
+  on conflict (day) do update
+    set visits = excluded.visits,
+        unique_visitors = excluded.unique_visitors,
+        new_customers = excluded.new_customers,
+        orders = excluded.orders,
+        revenue = excluded.revenue,
+        updated_at = now()
+  returning * into v_row;
+  return v_row;
+end;
+$$;
+
+revoke all on function public.refresh_store_daily_metrics(date) from public, anon;
+grant execute on function public.refresh_store_daily_metrics(date) to authenticated;
+
+-- Audit trail of admin changes to orders.
+create table if not exists public.admin_audit_log (
+  id bigint generated always as identity primary key,
+  admin_id uuid references auth.users (id) on delete set null,
+  order_id uuid references public.wallet_orders (id) on delete cascade,
+  action text not null,
+  details jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists admin_audit_log_order_idx on public.admin_audit_log (order_id, created_at desc);
+
+alter table public.admin_audit_log enable row level security;
+
+drop policy if exists "Admins read audit log" on public.admin_audit_log;
+create policy "Admins read audit log" on public.admin_audit_log
+  for select to authenticated using (public.is_store_admin());
+
+create or replace function public.log_admin_order_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_store_admin() then
+    return new;
+  end if;
+  if new.tracking_number is distinct from old.tracking_number then
+    insert into public.admin_audit_log (admin_id, order_id, action, details)
+    values (auth.uid(), new.id, 'tracking_updated',
+      jsonb_build_object('from', old.tracking_number, 'to', new.tracking_number));
+  end if;
+  if new.fulfillment_status is distinct from old.fulfillment_status then
+    insert into public.admin_audit_log (admin_id, order_id, action, details)
+    values (auth.uid(), new.id, 'fulfillment_status_changed',
+      jsonb_build_object('from', old.fulfillment_status, 'to', new.fulfillment_status));
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists wallet_orders_admin_audit on public.wallet_orders;
+create trigger wallet_orders_admin_audit
+after update of tracking_number, fulfillment_status on public.wallet_orders
+for each row execute function public.log_admin_order_change();

@@ -97,3 +97,174 @@ revoke all on function public.create_guest_order(jsonb, jsonb, text) from public
 revoke all on function public.lookup_guest_orders(text, text) from public;
 grant execute on function public.create_guest_order(jsonb, jsonb, text) to anon, authenticated;
 grant execute on function public.lookup_guest_orders(text, text) to anon, authenticated;
+
+-- Normalised order line items.
+create table if not exists public.order_items (
+  id bigint generated always as identity primary key,
+  order_id uuid not null references public.wallet_orders (id) on delete cascade,
+  position integer not null,
+  product_id text not null,
+  kind text not null default 'wholesale',
+  name text not null,
+  size text,
+  color text,
+  quantity integer not null default 1 check (quantity > 0),
+  unit_price numeric(12, 2) check (unit_price >= 0),
+  unique (order_id, position)
+);
+
+-- Shipping / pickup details, one row per order.
+create table if not exists public.order_shipping (
+  order_id uuid primary key references public.wallet_orders (id) on delete cascade,
+  full_name text not null default '',
+  email text not null default '',
+  phone text not null default '',
+  address text not null default '',
+  country text not null default '',
+  state_region text not null default '',
+  postal_code text not null default '',
+  delivery_method text not null default '',
+  is_pickup boolean not null default false,
+  notes text not null default '',
+  receipt_reference text
+);
+
+-- Status timeline shown to customers and admins.
+create table if not exists public.order_status_history (
+  id bigint generated always as identity primary key,
+  order_id uuid not null references public.wallet_orders (id) on delete cascade,
+  status text not null check (status in ('processing', 'shipped', 'completed', 'cancelled')),
+  tracking_number text,
+  changed_by uuid references auth.users (id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists order_items_order_idx on public.order_items (order_id);
+create index if not exists order_status_history_order_idx on public.order_status_history (order_id, created_at);
+create index if not exists wallet_orders_customer_email_idx on public.wallet_orders (lower(customer ->> 'email'));
+
+alter table public.order_items enable row level security;
+alter table public.order_shipping enable row level security;
+alter table public.order_status_history enable row level security;
+
+drop policy if exists "Owners read order items" on public.order_items;
+create policy "Owners read order items" on public.order_items for select to authenticated
+  using (exists (select 1 from public.wallet_orders o where o.id = order_id and o.user_id = (select auth.uid())));
+drop policy if exists "Admins read order items" on public.order_items;
+create policy "Admins read order items" on public.order_items for select to authenticated
+  using (public.is_store_admin());
+
+drop policy if exists "Owners read order shipping" on public.order_shipping;
+create policy "Owners read order shipping" on public.order_shipping for select to authenticated
+  using (exists (select 1 from public.wallet_orders o where o.id = order_id and o.user_id = (select auth.uid())));
+drop policy if exists "Admins read order shipping" on public.order_shipping;
+create policy "Admins read order shipping" on public.order_shipping for select to authenticated
+  using (public.is_store_admin());
+
+drop policy if exists "Owners read order history" on public.order_status_history;
+create policy "Owners read order history" on public.order_status_history for select to authenticated
+  using (exists (select 1 from public.wallet_orders o where o.id = order_id and o.user_id = (select auth.uid())));
+drop policy if exists "Admins read order history" on public.order_status_history;
+create policy "Admins read order history" on public.order_status_history for select to authenticated
+  using (public.is_store_admin());
+
+-- Guests have no direct table access; they use lookup_guest_orders().
+
+create or replace function public.sync_order_details(p_order public.wallet_orders)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.order_items (order_id, position, product_id, kind, name, size, color, quantity, unit_price)
+  select
+    p_order.id,
+    i.ord::integer,
+    left(coalesce(i.item ->> 'id', ''), 100),
+    left(coalesce(i.item ->> 'kind', 'wholesale'), 30),
+    left(coalesce(i.item ->> 'name', 'Item'), 200),
+    btrim((regexp_match(i.item ->> 'name', 'Size: (.+?)(?: - Color:|$)'))[1]),
+    btrim((regexp_match(i.item ->> 'name', 'Color: (.+)$'))[1]),
+    1,
+    nullif(i.item ->> 'unit_price', '')::numeric
+  from jsonb_array_elements(case when jsonb_typeof(p_order.items) = 'array' then p_order.items else '[]'::jsonb end)
+    with ordinality as i(item, ord)
+  on conflict (order_id, position) do nothing;
+
+  insert into public.order_shipping (order_id, full_name, email, phone, address, country, state_region, postal_code, delivery_method, is_pickup, notes, receipt_reference)
+  values (
+    p_order.id,
+    coalesce(p_order.customer ->> 'full_name', ''),
+    coalesce(p_order.customer ->> 'email', ''),
+    coalesce(p_order.customer ->> 'phone', ''),
+    coalesce(p_order.customer ->> 'address', ''),
+    coalesce(p_order.customer ->> 'country', ''),
+    coalesce(p_order.customer ->> 'state_region', ''),
+    coalesce(p_order.customer ->> 'postal_code', ''),
+    coalesce(p_order.customer ->> 'delivery_method', ''),
+    coalesce(p_order.customer ->> 'delivery_method', '') like 'In-store pickup%',
+    coalesce(p_order.customer ->> 'device_model', ''),
+    nullif(p_order.customer ->> 'receipt_reference', '')
+  )
+  on conflict (order_id) do nothing;
+end;
+$$;
+
+create or replace function public.wallet_orders_after_insert()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  perform public.sync_order_details(new);
+  insert into public.order_status_history (order_id, status, tracking_number, changed_by)
+  values (new.id, public.order_display_status(new.tracking_number, new.fulfillment_status), new.tracking_number, auth.uid());
+  return new;
+end;
+$$;
+
+create or replace function public.wallet_orders_after_update()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_old text := public.order_display_status(old.tracking_number, old.fulfillment_status);
+  v_new text := public.order_display_status(new.tracking_number, new.fulfillment_status);
+begin
+  if v_new is distinct from v_old then
+    insert into public.order_status_history (order_id, status, tracking_number, changed_by)
+    values (new.id, v_new, new.tracking_number, auth.uid());
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists wallet_orders_sync_details on public.wallet_orders;
+create trigger wallet_orders_sync_details
+after insert on public.wallet_orders
+for each row execute function public.wallet_orders_after_insert();
+
+drop trigger if exists wallet_orders_status_history on public.wallet_orders;
+create trigger wallet_orders_status_history
+after update of tracking_number, fulfillment_status on public.wallet_orders
+for each row execute function public.wallet_orders_after_update();
+
+-- Backfill existing orders.
+do $$
+declare
+  v_order public.wallet_orders;
+begin
+  for v_order in select * from public.wallet_orders loop
+    perform public.sync_order_details(v_order);
+    insert into public.order_status_history (order_id, status, tracking_number)
+    select v_order.id, public.order_display_status(v_order.tracking_number, v_order.fulfillment_status), v_order.tracking_number
+    where not exists (select 1 from public.order_status_history h where h.order_id = v_order.id);
+  end loop;
+end;
+$$;
+
+revoke all on function public.sync_order_details(public.wallet_orders) from public, anon, authenticated;
